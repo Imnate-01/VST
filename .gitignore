@@ -17,3 +17,7 @@ next-env.d.ts
 *.tsbuildinfo
 coverage/
 .turbo/
+
+.vercel
+.env*
+!.env.example

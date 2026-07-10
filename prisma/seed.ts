@@ -7,14 +7,35 @@ async function main() {
   console.log("🌱 Seeding database...");
 
   // ============ USERS ============
-  const passwordHash = await bcrypt.hash("changeme123", 10);
+  const defaultDevelopmentPassword = "changeme123";
+  const engineerPassword = process.env.SEED_ENGINEER_PASSWORD
+    ?? (process.env.NODE_ENV === "production" ? undefined : defaultDevelopmentPassword);
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD
+    ?? (process.env.NODE_ENV === "production" ? undefined : defaultDevelopmentPassword);
+
+  if (!engineerPassword || engineerPassword.length < 12) {
+    throw new Error("SEED_ENGINEER_PASSWORD must contain at least 12 characters.");
+  }
+
+  if (!adminPassword || adminPassword.length < 12) {
+    throw new Error("SEED_ADMIN_PASSWORD must contain at least 12 characters.");
+  }
+
+  if (process.env.NODE_ENV === "production" && engineerPassword === adminPassword) {
+    throw new Error("Production seed passwords must be different.");
+  }
+
+  const [engineerPasswordHash, adminPasswordHash] = await Promise.all([
+    bcrypt.hash(engineerPassword, 12),
+    bcrypt.hash(adminPassword, 12),
+  ]);
 
   const engineer = await prisma.user.upsert({
     where: { email: "robert.aubuchon@sig.biz" },
     update: {},
     create: {
       email: "robert.aubuchon@sig.biz",
-      passwordHash,
+      passwordHash: engineerPasswordHash,
       name: "Robert Au Buchon",
       title: "Field Service Engineer II",
       role: UserRole.ENGINEER,
@@ -26,7 +47,7 @@ async function main() {
     update: {},
     create: {
       email: "admin@sig.biz",
-      passwordHash,
+      passwordHash: adminPasswordHash,
       name: "System Admin",
       title: "Administrator",
       role: UserRole.ADMIN,
