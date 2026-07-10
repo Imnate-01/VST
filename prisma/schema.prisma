@@ -1,0 +1,466 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ AUTH ============
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  title        String   // "Field Service Engineer II"
+  role         UserRole @default(ENGINEER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reports    Report[]
+  signatures Signature[]
+  auditLogs  AuditLog[]
+}
+
+enum UserRole {
+  ENGINEER
+  ADMIN
+}
+
+// ============ CATÁLOGO ============
+
+model FillerModel {
+  id     String  @id @default(cuid())
+  code   String  @unique // "SUREFILL_100"
+  name   String          // "SureFill 100"
+  active Boolean @default(true)
+
+  devices DeviceCatalog[]
+  fillers Filler[]
+}
+
+model Filler {
+  id            String  @id @default(cuid())
+  modelId       String
+  serialNumber  String
+  clientName    String
+  clientAddress String
+  clientCity    String
+  clientState   String
+  clientZip     String
+  active        Boolean @default(true)
+
+  model   FillerModel @relation(fields: [modelId], references: [id])
+  reports Report[]
+
+  @@unique([modelId, serialNumber])
+}
+
+model DeviceCatalog {
+  id                 String   @id @default(cuid())
+  modelId            String
+  tagNumber          String
+  description        String
+  deviceType         DeviceType
+  toleranceValue     Decimal  @db.Decimal(10, 4)
+  toleranceUnit      String // "°C", "PSI", "Hg"
+  toleranceIsPercent Boolean  @default(false)
+
+  // Un dispositivo puede aparecer en más de un certificado.
+  // Ej: los tags 1403 / 1411 (Metering Pump MOT-1 y MOT-2) se calibran tanto en
+  // el certificado de Chamber Sterilization como en el de Tunnel Sterilization.
+  certificateTypes CertificateType[]
+
+  displayOrder Int
+  active       Boolean @default(true)
+
+  model                  FillerModel             @relation(fields: [modelId], references: [id])
+  reportDeviceSelections ReportDeviceSelection[]
+
+  @@unique([modelId, tagNumber])
+  @@index([modelId])
+}
+
+enum DeviceType {
+  RTD // Temperature
+  PS  // Pressure
+  FM  // Flow
+  HS  // Humidity
+  US  // Ultrasonic
+  MOT // Motor / Metering Pump
+}
+
+/// Un tipo por página de certificado del reporte VST.
+enum CertificateType {
+  TEMPERATURE // p.3
+  CHAMBER_VST_AIR_FLOW // p.4
+  CHAMBER_STERILE_AIR_FLOW // p.5
+  PRESSURE // p.6
+  VACUUM_TANK_PRESSURE // p.7
+  EOL_FLOW // p.8
+  VAC_FLOW // p.9
+  HUMIDITY // p.10
+  ULTRASONIC // p.11
+  METERING_PUMP_CHAMBER // p.12
+  METERING_PUMP_TUNNEL // p.13
+  EXHAUST // p.14
+  VACUUM_PRESSURE // p.15
+}
+
+/// Forma de captura de un certificado. Los 13 tipos se reducen a 5 layouts,
+/// y esos 5 a 3 formas de almacenamiento:
+///
+///   RANGE / SETPOINT / SINGLE_POINT -> MeasurementPoint
+///   TEST_READINGS                   -> TestReading
+///   VERIFICATION                    -> VerificationRow
+enum CertificateLayout {
+  /// Punto bajo + punto alto. Temperature, Pressure, Vacuum Tank, Vacuum, EOL, VAC.
+  RANGE
+
+  /// Como RANGE, más una condición de ensayo por punto (blower speed). Air Flow.
+  SETPOINT
+
+  /// Un único punto de verificación. Humidity.
+  SINGLE_POINT
+
+  /// N lecturas repetidas contra un target derivado. Ultrasonic, Metering Pump.
+  TEST_READINGS
+
+  /// Tabla libre, sin tolerancia ni Pass/Fail. Exhaust.
+  VERIFICATION
+}
+
+enum PointKind {
+  LOW
+  HIGH
+  SINGLE
+}
+
+// ============ INSTRUMENTOS PATRÓN ============
+
+model StandardInstrument {
+  id                    String   @id @default(cuid())
+  description           String   // "Precision Pressure Gauge"
+  manufacturer          String   // "FLUKE"
+  model                 String   // "700G06"
+  serialNumber          String
+  calibrationCertNumber String
+  calibrationDate       DateTime
+  calibrationExpiresAt  DateTime
+  active                Boolean  @default(true)
+
+  reportStandards ReportStandard[]
+
+  @@index([active, calibrationExpiresAt])
+}
+
+// ============ REPORTES ============
+
+model Report {
+  id             String       @id @default(cuid())
+  reportNumber   String       @unique // "CR_Nestle_20260512_CC_Rev0"
+  revisionNumber Int          @default(0)
+
+  fillerId     String
+  serviceDate  DateTime
+  preparedById String
+  status       ReportStatus @default(DRAFT)
+  observations String?
+
+  // Snapshots congelados al firmar:
+  preparedBySnapshot Json? // { name, title, email }
+  clientSnapshot     Json? // { name, address, city, state, zip }
+  fillerSnapshot     Json? // { model, serial }
+
+  submittedAt DateTime?
+  pdfUrl      String?
+  pdfSha256   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  filler     Filler @relation(fields: [fillerId], references: [id])
+  preparedBy User   @relation(fields: [preparedById], references: [id])
+
+  deviceSelections ReportDeviceSelection[]
+  certificates     Certificate[]
+  standards        ReportStandard[]
+  signatures       Signature[]
+
+  @@index([preparedById, status])
+  @@index([status, serviceDate])
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+
+  // Futuro:
+  // APPROVED
+  // REJECTED
+  // CLOSED
+}
+
+// ============ DISPOSITIVOS SELECCIONADOS EN REPORTE ============
+
+model ReportDeviceSelection {
+  id              String  @id @default(cuid())
+  reportId        String
+  deviceCatalogId String
+  included        Boolean @default(true)
+  exclusionReason String?
+
+  // Snapshots para inmutabilidad:
+  tagNumberSnapshot          String
+  descriptionSnapshot        String
+  toleranceValueSnapshot     Decimal           @db.Decimal(10, 4)
+  toleranceUnitSnapshot      String
+  toleranceIsPercentSnapshot Boolean
+  certificateTypesSnapshot   CertificateType[]
+  /// Orden de las columnas en el certificado. El PDF original no las ordena por
+  /// tag: Temperature va Vaporizer, Pre-Heater, Tunnel, Chamber.
+  displayOrderSnapshot Int @default(0)
+
+  report        Report        @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  deviceCatalog DeviceCatalog @relation(fields: [deviceCatalogId], references: [id])
+
+  measurements CertificateMeasurement[]
+
+  @@unique([reportId, deviceCatalogId])
+}
+
+// ============ INSTRUMENTOS PATRÓN USADOS EN REPORTE ============
+
+model ReportStandard {
+  id                   String @id @default(cuid())
+  reportId             String
+  standardInstrumentId String
+
+  // Snapshots:
+  descriptionSnapshot  String
+  manufacturerSnapshot String
+  modelSnapshot        String
+  serialSnapshot       String
+  certNumberSnapshot   String
+  calDateSnapshot      DateTime
+  calExpiresAtSnapshot DateTime
+
+  report             Report             @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  standardInstrument StandardInstrument @relation(fields: [standardInstrumentId], references: [id])
+
+  certificatesAsPrimary Certificate[]
+
+  @@unique([reportId, standardInstrumentId])
+}
+
+// ============ CERTIFICADOS ============
+
+model Certificate {
+  id                String            @id @default(cuid())
+  reportId          String
+  certificateType   CertificateType
+  layout            CertificateLayout
+  primaryStandardId String
+
+  /// Parámetros de ensayo propios del layout, validados con Zod al leer y escribir.
+  /// TEST_READINGS: { meteringRate, durationMinutes, material, acceptableLimit }
+  /// SINGLE_POINT:  { actionThreshold, dut: { manufacturer, model, serialNumber } }
+  params Json?
+
+  overallStatus CertificateStatus @default(PENDING)
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  report          Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  primaryStandard ReportStandard @relation(fields: [primaryStandardId], references: [id])
+
+  measurements     CertificateMeasurement[]
+  verificationRows VerificationRow[]
+  signatures       Signature[]
+
+  @@unique([reportId, certificateType])
+}
+
+enum CertificateStatus {
+  PENDING
+  PASS
+  FAIL
+  MIXED
+}
+
+/// Una fila por dispositivo dentro de un certificado.
+/// Los valores medidos viven en `points` (RANGE / SETPOINT / SINGLE_POINT)
+/// o en `readings` (TEST_READINGS), según el layout del certificado.
+model CertificateMeasurement {
+  id                String @id @default(cuid())
+  certificateId     String
+  deviceSelectionId String
+
+  /// Método de corrección aplicado. El certificado de Temperature lo rotula
+  /// "Correction" y admite valores como "Internal".
+  correctionMethod String?
+
+  /// El as-found estaba fuera de tolerancia y hubo que ajustar el instrumento.
+  /// No reprueba el certificado; documenta la deriva.
+  requiredAdjustment Boolean @default(false)
+
+  status       MeasurementStatus @default(PENDING)
+  statusReason String?
+
+  certificate     Certificate           @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  deviceSelection ReportDeviceSelection @relation(fields: [deviceSelectionId], references: [id], onDelete: Cascade)
+
+  points   MeasurementPoint[]
+  readings TestReading[]
+
+  @@unique([certificateId, deviceSelectionId])
+}
+
+enum MeasurementStatus {
+  PENDING
+  PASS
+  FAIL
+  NA
+}
+
+/// Un punto de calibración (bajo, alto, o único) de un dispositivo.
+/// Layouts RANGE, SETPOINT y SINGLE_POINT.
+///
+/// Modelo de tres valores: el target nominal (informativo), y por cada pase
+/// As Found / As Left un par reference (lo que lee el patrón) + reading (lo que
+/// lee el UUT). deviation = reading - reference.
+model MeasurementPoint {
+  id            String    @id @default(cuid())
+  measurementId String
+  kind          PointKind
+
+  /// Condición de ensayo bajo la que se tomó el punto (layout SETPOINT).
+  /// En los certificados de Air Flow es el Blower Speed.
+  conditionValue Decimal? @db.Decimal(10, 4)
+
+  /// Setpoint nominal apuntado. Informativo, no entra al Pass/Fail.
+  targetNominal Decimal? @db.Decimal(10, 4)
+
+  // As Found: antes de ajustar.
+  asFoundReference   Decimal? @db.Decimal(10, 4)
+  asFoundReading     Decimal? @db.Decimal(10, 4)
+  asFoundDeviation   Decimal? @db.Decimal(10, 4)
+  asFoundInTolerance Boolean?
+
+  // As Left: después de ajustar.
+  asLeftReference   Decimal? @db.Decimal(10, 4)
+  asLeftReading     Decimal? @db.Decimal(10, 4)
+  asLeftDeviation   Decimal? @db.Decimal(10, 4)
+  asLeftInTolerance Boolean?
+
+  measurement CertificateMeasurement @relation(fields: [measurementId], references: [id], onDelete: Cascade)
+
+  @@unique([measurementId, kind])
+}
+
+/// Una lectura de una corrida de ensayo repetida. Layout TEST_READINGS
+/// (Ultrasonic, Metering Pump): "Test #1 Actual Reading", "Test #2...".
+model TestReading {
+  id            String @id @default(cuid())
+  measurementId String
+  sequence      Int
+
+  value       Decimal? @db.Decimal(10, 4)
+  target      Decimal? @db.Decimal(10, 4)
+  deviation   Decimal? @db.Decimal(10, 4)
+  inTolerance Boolean?
+
+  measurement CertificateMeasurement @relation(fields: [measurementId], references: [id], onDelete: Cascade)
+
+  @@unique([measurementId, sequence])
+}
+
+/// Fila de una tabla de verificación sin tolerancia ni Pass/Fail.
+/// Layout VERIFICATION (Exhaust): "This is for Verification reference only".
+model VerificationRow {
+  id            String @id @default(cuid())
+  certificateId String
+
+  motorTag         String
+  description      String
+  rowLabel         String // "Filling Area", "Assembly Area", ...
+  scfm             Decimal? @db.Decimal(10, 4)
+  driveFrequencyHz Decimal? @db.Decimal(10, 4)
+  notApplicable    Boolean  @default(false)
+  displayOrder     Int
+
+  certificate Certificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
+  @@unique([certificateId, motorTag, rowLabel])
+}
+
+// ============ FIRMAS ============
+
+model Signature {
+  id                String     @id @default(cuid())
+  reportId          String
+  signerUserId String
+  signerRole   SignerRole
+
+  /// null = firma general del reporte (página 1 del PDF).
+  /// Con valor = firma de validación de un certificado; cada página de
+  /// certificado tiene su propio bloque "Signature / Date".
+  certificateId String?
+
+  signatureImageUrl String
+  /// SHA-256 del contenido firmado. Si el contenido cambia, la firma se revoca.
+  payloadHash String
+  signedAt    DateTime  @default(now())
+  ipAddress   String?
+  userAgent   String?
+  revoked     Boolean   @default(false)
+  revokedAt   DateTime?
+
+  report      Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  signer      User         @relation(fields: [signerUserId], references: [id])
+  certificate Certificate? @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
+  // Se conserva el historial: firmar de nuevo revoca la firma anterior y crea
+  // una fila nueva. Por eso NO hay un @@unique sobre
+  // [reportId, certificateId, signerUserId, signerRole]: bloquearía la
+  // re-firma, ya que `revoked` no libera el slot.
+  //
+  // La invariante real es "a lo sumo una firma activa por certificado", que en
+  // Postgres es un índice único parcial (WHERE revoked = false). Prisma no lo
+  // sabe expresar, así que hoy se garantiza en la transacción de firma. Ver
+  // docs/signature-partial-index.sql.
+  @@index([reportId, revoked])
+  @@index([certificateId, revoked])
+}
+
+enum SignerRole {
+  PREPARER
+
+  // Futuro:
+  // APPROVER
+  // WITNESS
+}
+
+// ============ AUDITORÍA ============
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String   // "Report", "Certificate", etc.
+  entityId   String
+  action     String   // "create", "update", "submit", "sign"
+  userId     String
+  changes    Json?
+  ipAddress  String?
+  userAgent  String?
+  occurredAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId, occurredAt])
+  @@index([userId, occurredAt])
+}

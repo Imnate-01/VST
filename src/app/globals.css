@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    /* Azul corporativo SIG (#0A5AA5) */
+    --primary: 208 89% 34%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 208 40% 96%;
+    --secondary-foreground: 208 60% 18%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 208 60% 95%;
+    --accent-foreground: 208 70% 22%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 208 89% 34%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Los números de medición se comparan en columna: tabulares y alineados. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+}
+
+@layer components {
+  /* Contenedor de tabla: borde, esquinas y scroll horizontal propio. */
+  .table-shell {
+    @apply overflow-x-auto rounded-xl border border-sig-100 bg-white shadow-sm;
+  }
+
+  .table-modern {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .table-modern thead th {
+    @apply sticky top-0 z-10 whitespace-nowrap border-b border-sig-200 bg-sig-50
+           px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider
+           text-sig-800;
+  }
+
+  .table-modern tbody tr {
+    @apply border-b border-sig-100/70 transition-colors last:border-0;
+  }
+
+  .table-modern tbody tr:nth-child(even) {
+    @apply bg-sig-50/40;
+  }
+
+  .table-modern tbody tr:hover {
+    @apply bg-sig-100/60;
+  }
+
+  .table-modern tbody td {
+    @apply px-4 py-3 align-middle;
+  }
+}

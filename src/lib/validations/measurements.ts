@@ -1,0 +1,88 @@
+import { CertificateType, PointKind } from "@prisma/client";
+import { z } from "zod";
+import { DEFAULT_LOCALE, translate, type Locale } from "@/lib/i18n";
+
+function getDecimalStringSchema(locale: Locale) {
+  return z.string().trim().regex(/^-?\d+(\.\d+)?$/, translate(locale, "validation.validNumber"));
+}
+
+function getOptionalDecimalStringSchema(locale: Locale) {
+  return z.preprocess(
+    (value) => {
+      if (typeof value === "string" && value.trim() === "") return undefined;
+      return value;
+    },
+    getDecimalStringSchema(locale).optional()
+  );
+}
+
+export function getMeasurementPointSchema(locale: Locale) {
+  const optionalDecimalStringSchema = getOptionalDecimalStringSchema(locale);
+  return z.object({
+  kind: z.nativeEnum(PointKind),
+  /** Condición de ensayo (blower speed) en el layout SETPOINT. */
+  conditionValue: optionalDecimalStringSchema,
+  /** Setpoint nominal apuntado (informativo). */
+  targetNominal: optionalDecimalStringSchema,
+  /** As Found: reference = patrón, reading = UUT. */
+  asFoundReference: optionalDecimalStringSchema,
+  asFoundReading: optionalDecimalStringSchema,
+  /** As Left: reference = patrón, reading = UUT. */
+  asLeftReference: optionalDecimalStringSchema,
+  asLeftReading: optionalDecimalStringSchema,
+  });
+}
+
+export const measurementPointSchema = getMeasurementPointSchema(DEFAULT_LOCALE);
+
+export function getCertificateMeasurementRowSchema(locale: Locale) {
+  return z.object({
+  deviceSelectionId: z.string().min(1),
+  correctionMethod: z.string().trim().max(100, translate(locale, "validation.max100")).optional(),
+  points: z
+    .array(getMeasurementPointSchema(locale))
+    .min(1, translate(locale, "validation.pointRequired"))
+    .superRefine((points, ctx) => {
+      const seen = new Set<PointKind>();
+      for (const point of points) {
+        if (seen.has(point.kind)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: translate(locale, "validation.duplicatePoint", { point: point.kind }),
+          });
+        }
+        seen.add(point.kind);
+      }
+    }),
+  });
+}
+
+export const certificateMeasurementRowSchema = getCertificateMeasurementRowSchema(DEFAULT_LOCALE);
+
+export function getUpsertMeasurementSchema(locale: Locale) {
+  return z.object({
+  reportId: z.string().min(1),
+  certificateId: z.string().min(1),
+  certificateType: z.nativeEnum(CertificateType),
+  measurements: z.array(getCertificateMeasurementRowSchema(locale)),
+  });
+}
+
+export const upsertMeasurementSchema = getUpsertMeasurementSchema(DEFAULT_LOCALE);
+
+export function getUpdateCertificateNotesSchema(locale: Locale) {
+  return z.object({
+  reportId: z.string().min(1),
+  certificateId: z.string().min(1),
+  notes: z.string().max(2000, translate(locale, "validation.max2000")).optional(),
+  });
+}
+
+export const updateCertificateNotesSchema = getUpdateCertificateNotesSchema(DEFAULT_LOCALE);
+
+export type MeasurementPointInput = z.infer<typeof measurementPointSchema>;
+export type CertificateMeasurementRowInput = z.infer<
+  typeof certificateMeasurementRowSchema
+>;
+export type UpsertMeasurementInput = z.infer<typeof upsertMeasurementSchema>;
+export type UpdateCertificateNotesInput = z.infer<typeof updateCertificateNotesSchema>;
