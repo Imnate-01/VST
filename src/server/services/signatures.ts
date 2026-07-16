@@ -12,6 +12,7 @@ import {
   type CertificateSignaturePayload,
   type ReportSignaturePayload,
 } from "@/server/domain/signature-payload";
+import { hasCompleteCertificateMeasurement } from "@/server/domain/certificate-completeness";
 import { storeSignatureImage } from "@/server/services/signature-storage";
 import { logAudit } from "@/server/services/audit";
 
@@ -135,13 +136,38 @@ export async function signCertificate(
 
   const certificate = await prisma.certificate.findFirst({
     where: { id: input.certificateId, reportId: report.id },
+    include: { measurements: { include: { points: true } } },
   });
 
   if (!certificate) {
     throw new Error("Certificado inválido para este reporte.");
   }
 
-  if (certificate.overallStatus === CertificateStatus.PENDING) {
+  const expectedSelections = await prisma.reportDeviceSelection.findMany({
+    where: {
+      reportId: report.id,
+      included: true,
+      certificateTypesSnapshot: { has: certificate.certificateType },
+    },
+    select: { id: true },
+  });
+  const expectedSelectionIds = new Set(
+    expectedSelections.map((selection) => selection.id)
+  );
+  const relevantMeasurements = certificate.measurements.filter((measurement) =>
+    expectedSelectionIds.has(measurement.deviceSelectionId)
+  );
+  const measurementsComplete =
+    relevantMeasurements.length === expectedSelections.length &&
+    expectedSelections.length > 0 &&
+    relevantMeasurements.every((measurement) =>
+      hasCompleteCertificateMeasurement(certificate.certificateType, measurement.points)
+    );
+
+  if (
+    !measurementsComplete ||
+    certificate.overallStatus === CertificateStatus.PENDING
+  ) {
     throw new Error(
       "No puedes firmar un certificado con mediciones pendientes. Completa la captura primero."
     );

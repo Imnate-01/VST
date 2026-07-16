@@ -5,26 +5,29 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 0 0% 0%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 0 0% 0%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    /* Azul corporativo SIG (#0A5AA5) */
-    --primary: 208 89% 34%;
+    --popover-foreground: 0 0% 0%;
+    --primary: 222 98% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 208 40% 96%;
-    --secondary-foreground: 208 60% 18%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 208 60% 95%;
-    --accent-foreground: 208 70% 22%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 208 89% 34%;
-    --radius: 0.5rem;
+    --secondary: 30 21% 94%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 30 21% 94%;
+    --muted-foreground: 30 3% 44%;
+    --accent: 30 21% 94%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 4 82% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 19% 87%;
+    --input: 30 4% 73%;
+    --ring: 222 98% 53%;
+    --success: 154 59% 30%;
+    --warning: 37 100% 27%;
+    --spark: 279 100% 81%;
+    --logo: 231 42% 41%;
+    --radius: 0.625rem;
   }
 
   * {
@@ -33,20 +36,64 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: "Hanken Grotesk", "Aptos", "Segoe UI", Arial, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+    text-rendering: optimizeLegibility;
   }
 
-  /* Los números de medición se comparan en columna: tabulares y alineados. */
+  h1 {
+    @apply font-bold tracking-normal;
+  }
+
+  h2,
+  h3 {
+    @apply font-semibold tracking-normal;
+  }
+
+  ::selection {
+    background: hsl(var(--spark));
+    color: hsl(var(--foreground));
+  }
+
+  select,
+  textarea {
+    @apply border-input bg-white transition-colors outline-none;
+  }
+
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply border-primary ring-2 ring-primary/20;
+  }
+
   .tabular {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
   }
+
+  code,
+  kbd,
+  samp,
+  .technical-id,
+  .tabular {
+    font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas,
+      monospace;
+  }
 }
 
 @layer components {
-  /* Contenedor de tabla: borde, esquinas y scroll horizontal propio. */
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase text-muted-foreground;
+    font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas,
+      monospace;
+    letter-spacing: 0.06em;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold;
+  }
+
   .table-shell {
-    @apply overflow-x-auto rounded-xl border border-sig-100 bg-white shadow-sm;
+    @apply overflow-x-auto rounded-xl border bg-white;
   }
 
   .table-modern {
@@ -54,21 +101,23 @@
   }
 
   .table-modern thead th {
-    @apply sticky top-0 z-10 whitespace-nowrap border-b border-sig-200 bg-sig-50
-           px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider
-           text-sig-800;
+    @apply sticky top-0 z-10 whitespace-nowrap border-b bg-muted px-4 py-3
+           text-left text-[11px] font-semibold uppercase text-muted-foreground;
+    font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas,
+      monospace;
+    letter-spacing: 0.05em;
   }
 
   .table-modern tbody tr {
-    @apply border-b border-sig-100/70 transition-colors last:border-0;
+    @apply border-b transition-colors last:border-0;
   }
 
   .table-modern tbody tr:nth-child(even) {
-    @apply bg-sig-50/40;
+    @apply bg-muted/30;
   }
 
   .table-modern tbody tr:hover {
-    @apply bg-sig-100/60;
+    @apply bg-muted/70;
   }
 
   .table-modern tbody td {

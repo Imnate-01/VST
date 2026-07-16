@@ -30,8 +30,6 @@ export type CertificateConfig = {
   showDeviation: boolean;
   /** Rótulo de la condición de ensayo (layout SETPOINT). */
   conditionLabel?: string;
-  /** Rótulo del campo de método de corrección, si el certificado lo tiene. */
-  correctionMethodLabel?: string;
   /** Cantidad de corridas de ensayo (layout TEST_READINGS). */
   testReadingCount?: number;
   /** ¿Está implementada la captura en la app? */
@@ -47,7 +45,6 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "temperature",
     showDeviation: true,
-    correctionMethodLabel: "Correction",
     implemented: true,
   },
   [CertificateType.CHAMBER_VST_AIR_FLOW]: {
@@ -233,12 +230,6 @@ export function getConditionLabel(type: CertificateType, locale: Locale): string
   const label = CERTIFICATE_CONFIG[type].conditionLabel;
   if (!label) return null;
   return label === "Blower Speed" ? translate(locale, "condition.blowerSpeed") : label;
-}
-
-export function getCorrectionMethodLabel(type: CertificateType, locale: Locale): string | null {
-  const label = CERTIFICATE_CONFIG[type].correctionMethodLabel;
-  if (!label) return null;
-  return label === "Correction" ? translate(locale, "correction.method") : label;
 }
 
 export function getPointKindLabel(kind: PointKind, locale: Locale): string {

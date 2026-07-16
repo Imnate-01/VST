@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect, unstable_rethrow } from "next/navigation";
+import { unstable_rethrow } from "next/navigation";
 import { requireAuth } from "@/server/auth";
 import {
   updateCertificateNotes as updateCertificateNotesService,
@@ -11,7 +11,7 @@ import {
   getUpdateCertificateNotesSchema,
   getUpsertMeasurementSchema,
 } from "@/lib/validations/measurements";
-import { getNextCertificateHref } from "@/lib/certificates";
+import { certificateHref } from "@/lib/certificates";
 import { getLocale } from "@/lib/i18n-server";
 import { localizeServerError, translate, type Locale } from "@/lib/i18n";
 
@@ -29,24 +29,19 @@ export async function upsertMeasurement(input: unknown) {
 
   try {
     const session = await requireAuth();
-    await upsertCertificateMeasurement(
+    const certificateStatus = await upsertCertificateMeasurement(
       { id: session.user.id, role: session.user.role },
       parsed.data
     );
+    revalidatePath(`/reports/${parsed.data.reportId}`);
+    revalidatePath(certificateHref(parsed.data.reportId, parsed.data.certificateType));
+    return { ok: true as const, certificateStatus };
   } catch (error) {
     // requireAuth redirige a /login si la sesión ya no es válida; ese "error"
     // es control de flujo de Next y no debe convertirse en un mensaje.
     unstable_rethrow(error);
     return { ok: false, message: getErrorMessage(error, locale) };
   }
-
-  revalidatePath("/reports");
-  redirect(
-    getNextCertificateHref({
-      reportId: parsed.data.reportId,
-      certificateType: parsed.data.certificateType,
-    })
-  );
 }
 
 export async function updateCertificateNotes(input: unknown) {

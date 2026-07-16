@@ -1,17 +1,26 @@
 "use client";
 
 import { CertificateStatus, MeasurementStatus } from "@prisma/client";
+import { Check, CircleMinus, Clock3, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 
 type Status = MeasurementStatus | CertificateStatus;
 
 const statusClasses: Record<string, string> = {
-  PENDING: "bg-muted text-muted-foreground",
-  PASS: "bg-green-100 text-green-700",
-  FAIL: "bg-red-100 text-red-700",
-  NA: "bg-slate-100 text-slate-600",
-  MIXED: "bg-amber-100 text-amber-700",
+  PENDING: "border-border bg-muted text-muted-foreground",
+  PASS: "border-success/25 bg-success-muted text-success",
+  FAIL: "border-destructive/25 bg-destructive/5 text-destructive",
+  NA: "border-border bg-muted text-muted-foreground",
+  MIXED: "border-warning/25 bg-warning-muted text-warning",
+};
+
+const statusIcons = {
+  PENDING: Clock3,
+  PASS: Check,
+  FAIL: X,
+  NA: CircleMinus,
+  MIXED: TriangleAlert,
 };
 
 export function MeasurementStatusBadge({
@@ -29,15 +38,17 @@ export function MeasurementStatusBadge({
     NA: t("measurement.na"),
     MIXED: t("measurement.mixed"),
   }[status];
+  const Icon = statusIcons[status];
 
   return (
     <span
       className={cn(
-        "inline-flex rounded-full px-2 py-1 text-xs font-semibold",
+        "status-badge",
         statusClasses[status],
         className
       )}
     >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {label}
     </span>
   );

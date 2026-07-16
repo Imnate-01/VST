@@ -3,11 +3,11 @@ import { notFound } from "next/navigation";
 import { requireAuth } from "@/server/auth";
 import { getCertificateForWizard } from "@/server/services/certificates";
 import { getActiveCertificateSignature } from "@/server/services/signatures";
-import { CertificateSignatureBlock } from "@/components/report/signature-blocks";
 import {
   getCertificateConfig,
   getCertificateLabel,
   getDefaultTargets,
+  getNextCertificateHref,
   parseCertificateRouteType,
 } from "@/lib/certificates";
 import { getTranslations } from "@/lib/i18n-server";
@@ -20,9 +20,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  StepCertificateForm,
   type MeasurementRow,
 } from "@/components/wizard/step-certificate-form";
+import { CertificateStep } from "@/components/wizard/certificate-step";
+import { hasCompleteCertificateMeasurement } from "@/server/domain/certificate-completeness";
 
 type Props = {
   params: Promise<{ id: string; type: string }>;
@@ -114,7 +115,6 @@ export default async function CertificateWizardPage({ params }: Props) {
 
     return {
       deviceSelectionId: selection.id,
-      correctionMethod: measurement?.correctionMethod ?? "",
       points: config.pointKinds.map((kind) => {
         const saved = savedPointByKind.get(kind);
 
@@ -154,45 +154,45 @@ export default async function CertificateWizardPage({ params }: Props) {
   });
 
   const signature = await getActiveCertificateSignature(data.certificate.id);
+  const measurementsComplete =
+    data.measurements.length === data.deviceSelections.length &&
+    data.measurements.every((measurement) =>
+      hasCompleteCertificateMeasurement(certificateType, measurement.points)
+    );
+  const certificateReadyToSign =
+    measurementsComplete && data.certificate.overallStatus !== "PENDING";
 
   return (
-    <div className="space-y-6">
-      <StepCertificateForm
-        title={title}
-        description={t("certificate.captureDescription", {
-          report: data.report.reportNumber,
-          standard: data.certificate.primaryStandard.descriptionSnapshot,
-          serial: data.certificate.primaryStandard.serialSnapshot,
-        })}
-        reportId={data.report.id}
-        certificateId={data.certificate.id}
-        certificateType={certificateType}
-        rows={rows}
-        initialValues={{
-          reportId: data.report.id,
-          certificateId: data.certificate.id,
-          certificateType,
-          measurements: initialMeasurements,
-        }}
-      />
-
-      <CertificateSignatureBlock
-        reportId={data.report.id}
-        certificateId={data.certificate.id}
-        existing={
-          signature && {
-            signatureImageUrl: signature.signatureImageUrl,
-            signedAt: signature.signedAt,
-            signerName: signature.signer.name,
-            signerTitle: signature.signer.title,
-          }
+    <CertificateStep
+      title={title}
+      description={t("certificate.captureDescription", {
+        report: data.report.reportNumber,
+        standard: data.certificate.primaryStandard.descriptionSnapshot,
+        serial: data.certificate.primaryStandard.serialSnapshot,
+      })}
+      reportId={data.report.id}
+      certificateId={data.certificate.id}
+      certificateType={certificateType}
+      rows={rows}
+      initialValues={{
+        reportId: data.report.id,
+        certificateId: data.certificate.id,
+        certificateType,
+        measurements: initialMeasurements,
+      }}
+      initialReadyToSign={certificateReadyToSign}
+      signature={
+        signature && {
+          signatureImageUrl: signature.signatureImageUrl,
+          signedAt: signature.signedAt,
+          signerName: signature.signer.name,
+          signerTitle: signature.signer.title,
         }
-        blockedReason={
-          data.certificate.overallStatus === "PENDING"
-            ? t("certificate.completeBeforeSign")
-            : null
-        }
-      />
-    </div>
+      }
+      nextHref={getNextCertificateHref({
+        reportId: data.report.id,
+        certificateType,
+      })}
+    />
   );
 }

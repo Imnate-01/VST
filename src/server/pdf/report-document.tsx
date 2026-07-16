@@ -12,194 +12,362 @@ import {
 } from "@/lib/i18n";
 
 /**
- * Se usan solo las fuentes estándar de PDF (Helvetica). Registrar una fuente
- * externa obligaría a bajarla en tiempo de render, que en serverless es un
- * punto de falla que no vale la pena.
+ * PDF-safe equivalents of the product design system.
+ * Helvetica is the stable sans-serif stand-in and Courier is reserved for
+ * report IDs, serials, dates, and measurement values.
  */
-const BRAND = "#0A5AA5";
-const BRAND_DARK = "#063C6E";
-const RULE = "#BBD5EE";
-const RULE_SOFT = "#DCEAF7";
-const BAND = "#F1F7FC";
-const ZEBRA = "#F8FBFD";
-const INK = "#1B2733";
-const INK_SOFT = "#5C6B7A";
+const BRAND = "#145EFC";
+const BRAND_SOFT = "#EAF1FF";
+const BLACK = "#000000";
+const SAND_1 = "#F2EFEB";
+const SAND_2 = "#E5DFD9";
+const SAND_3 = "#BFBAB5";
+const SAND_4 = "#73706D";
+const WHITE = "#FFFFFF";
 
-const PASS = "#0F7B4F";
-const PASS_BG = "#E7F6EE";
+const PASS = "#1F7A4D";
+const PASS_BG = "#EDF7F1";
 const FAIL = "#B42318";
-const FAIL_BG = "#FDECEA";
-const NEUTRAL = "#64748B";
-const NEUTRAL_BG = "#F1F5F9";
+const FAIL_BG = "#FCEEEE";
+const NEUTRAL = SAND_4;
+const NEUTRAL_BG = SAND_1;
 
 const styles = StyleSheet.create({
   page: {
     paddingTop: 26,
     paddingBottom: 44,
     paddingHorizontal: 32,
-    fontSize: 8,
+    fontSize: 8.2,
     fontFamily: "Helvetica",
-    color: INK,
+    color: BLACK,
+    backgroundColor: WHITE,
   },
-
-  // ---- Cabecera de marca ----
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: BRAND,
-    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: SAND_2,
+    marginBottom: 18,
   },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  headerTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: BRAND_DARK },
-  headerSub: { fontSize: 6.5, color: INK_SOFT, letterSpacing: 0.6, textTransform: "uppercase" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 9 },
+  logoBox: {
+    width: 31,
+    height: 31,
+    borderWidth: 1,
+    borderColor: SAND_3,
+    borderRadius: 5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: BLACK },
+  headerSub: {
+    marginTop: 2,
+    fontSize: 6.2,
+    fontFamily: "Courier-Bold",
+    color: SAND_4,
+    letterSpacing: 0.5,
+  },
   headerRight: { alignItems: "flex-end" },
-  headerMeta: { fontSize: 6.5, color: INK_SOFT },
-  headerRef: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: INK },
-
-  // ---- Títulos ----
-  docTitle: { fontSize: 15, fontFamily: "Helvetica-Bold", color: BRAND_DARK },
-  docLead: { fontSize: 7.5, lineHeight: 1.5, color: INK_SOFT, marginTop: 4, marginBottom: 14 },
-
-  certTitle: { fontSize: 13, fontFamily: "Helvetica-Bold", color: BRAND_DARK },
-  certLead: { fontSize: 7, lineHeight: 1.5, color: INK_SOFT, marginTop: 3, marginBottom: 12 },
-
-  sectionBar: {
-    backgroundColor: BRAND,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderTopLeftRadius: 3,
-    borderTopRightRadius: 3,
-  },
-  sectionBarText: {
-    fontSize: 7,
-    fontFamily: "Helvetica-Bold",
-    color: "#FFFFFF",
-    letterSpacing: 1,
+  headerMeta: {
+    fontSize: 6,
+    fontFamily: "Courier-Bold",
+    color: SAND_4,
     textTransform: "uppercase",
   },
-
-  // ---- Tablas ----
+  headerRef: {
+    marginTop: 2,
+    fontSize: 8.2,
+    fontFamily: "Courier-Bold",
+    color: BLACK,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  docTitle: { fontSize: 20, fontFamily: "Helvetica-Bold", color: BLACK },
+  docLead: {
+    maxWidth: 440,
+    fontSize: 7.5,
+    lineHeight: 1.5,
+    color: SAND_4,
+    marginTop: 5,
+    marginBottom: 16,
+  },
+  certTitle: { fontSize: 16, fontFamily: "Helvetica-Bold", color: BLACK },
+  certLead: {
+    fontSize: 7,
+    lineHeight: 1.5,
+    color: SAND_4,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  coverEyebrow: {
+    marginBottom: 6,
+    fontSize: 6.5,
+    fontFamily: "Courier",
+    color: SAND_4,
+    letterSpacing: 0.8,
+  },
+  coverSubtitle: {
+    marginTop: 4,
+    marginBottom: 15,
+    fontSize: 8,
+    color: SAND_4,
+  },
+  sectionTitle: {
+    marginTop: 13,
+    marginBottom: 7,
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    color: BLACK,
+  },
+  sectionBar: {
+    backgroundColor: SAND_1,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: SAND_2,
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
+  },
+  sectionBarText: {
+    fontSize: 6.5,
+    fontFamily: "Courier-Bold",
+    color: SAND_4,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
   table: {
     borderWidth: 1,
-    borderColor: RULE,
+    borderColor: SAND_2,
     borderTopWidth: 0,
-    borderBottomLeftRadius: 3,
-    borderBottomRightRadius: 3,
+    borderBottomLeftRadius: 5,
+    borderBottomRightRadius: 5,
   },
-  row: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: RULE_SOFT },
+  row: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: SAND_2 },
   rowLast: { flexDirection: "row" },
-  rowZebra: { backgroundColor: ZEBRA },
-
+  rowZebra: { backgroundColor: "#FBFAF9" },
   labelCell: {
     width: 118,
     paddingVertical: 4,
     paddingHorizontal: 6,
     borderRightWidth: 1,
-    borderRightColor: RULE_SOFT,
+    borderRightColor: SAND_2,
+    backgroundColor: SAND_1,
     fontFamily: "Helvetica-Bold",
-    fontSize: 7,
-    color: BRAND_DARK,
+    fontSize: 6.8,
+    color: BLACK,
   },
   valueCell: { flex: 1, paddingVertical: 4, paddingHorizontal: 6, fontSize: 7.5 },
-
   dataCell: {
     flex: 1,
     paddingVertical: 4,
     paddingHorizontal: 4,
     borderRightWidth: 1,
-    borderRightColor: RULE_SOFT,
+    borderRightColor: SAND_2,
     textAlign: "center",
-    fontSize: 7.5,
+    fontFamily: "Courier",
+    fontSize: 7,
   },
   dataCellLast: {
     flex: 1,
     paddingVertical: 4,
     paddingHorizontal: 4,
     textAlign: "center",
-    fontSize: 7.5,
+    fontFamily: "Courier",
+    fontSize: 7,
   },
-
-  groupRow: { backgroundColor: BAND },
+  groupRow: { backgroundColor: BRAND_SOFT },
   groupLabel: {
     width: 118,
     paddingVertical: 3,
     paddingHorizontal: 6,
     borderRightWidth: 1,
-    borderRightColor: RULE_SOFT,
-    fontFamily: "Helvetica-Bold",
+    borderRightColor: SAND_2,
+    fontFamily: "Courier-Bold",
     fontSize: 6.5,
     color: BRAND,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
   },
-  subRow: { backgroundColor: "#FBFDFF" },
+  subRow: { backgroundColor: SAND_1 },
   subLabel: {
     width: 118,
     paddingVertical: 2,
     paddingHorizontal: 10,
     borderRightWidth: 1,
-    borderRightColor: RULE_SOFT,
-    fontFamily: "Helvetica-Bold",
+    borderRightColor: SAND_2,
+    fontFamily: "Courier-Bold",
     fontSize: 6,
-    color: INK_SOFT,
-    letterSpacing: 0.6,
+    color: SAND_4,
+    letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  excluded: { color: "#9AA7B4" },
-  identity: { fontFamily: "Helvetica-Bold", color: BRAND_DARK },
-
-  // ---- Layout de dos columnas ----
+  excluded: { color: SAND_3 },
+  identity: { fontFamily: "Courier-Bold", color: BLACK },
   twoCol: { flexDirection: "row", gap: 14, marginTop: 14 },
   col: { flex: 1 },
-
-  // ---- Firma ----
   signatureBox: {
     borderWidth: 1,
-    borderColor: RULE,
-    borderRadius: 3,
-    backgroundColor: "#FFFFFF",
+    borderColor: SAND_2,
+    borderRadius: 5,
+    backgroundColor: WHITE,
     height: 54,
     padding: 3,
     justifyContent: "center",
   },
   signatureImage: { height: 46, objectFit: "contain" },
-  caption: { fontSize: 6.5, color: INK_SOFT, marginTop: 3 },
-  unsigned: { fontSize: 7, color: "#A9B4BF", textAlign: "center" },
-
+  caption: { fontSize: 6.3, color: SAND_4, marginTop: 3 },
+  unsigned: { fontSize: 7, color: SAND_3, textAlign: "center" },
   observations: {
     borderWidth: 1,
-    borderColor: RULE,
-    borderRadius: 3,
+    borderColor: SAND_2,
+    borderRadius: 5,
     minHeight: 54,
     padding: 6,
     fontSize: 7.5,
     lineHeight: 1.4,
-    backgroundColor: ZEBRA,
+    backgroundColor: SAND_1,
   },
   blockLabel: {
     fontSize: 6.5,
-    fontFamily: "Helvetica-Bold",
-    color: BRAND,
-    letterSpacing: 0.8,
+    fontFamily: "Courier-Bold",
+    color: SAND_4,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
     marginBottom: 3,
   },
-
-  // ---- Chip de estado ----
   chip: {
     alignSelf: "flex-start",
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-    borderRadius: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 5,
     fontSize: 6.5,
-    fontFamily: "Helvetica-Bold",
-    letterSpacing: 0.5,
+    fontFamily: "Courier-Bold",
+    letterSpacing: 0.3,
   },
-
-  // ---- Pie ----
+  summaryCard: {
+    borderWidth: 1,
+    borderColor: SAND_2,
+    borderRadius: 6,
+    marginBottom: 14,
+    overflow: "hidden",
+  },
+  summaryRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: SAND_2,
+  },
+  summaryRowLast: { flexDirection: "row" },
+  summaryCell: {
+    flex: 1,
+    minHeight: 48,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+  },
+  summaryCellBorder: {
+    borderRightWidth: 1,
+    borderRightColor: SAND_2,
+  },
+  summaryLabel: {
+    fontSize: 5.8,
+    fontFamily: "Courier-Bold",
+    color: SAND_4,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  summaryValue: {
+    fontSize: 8.5,
+    fontFamily: "Helvetica-Bold",
+    color: BLACK,
+  },
+  summaryTechnical: {
+    fontFamily: "Courier-Bold",
+    fontSize: 7.8,
+  },
+  resultGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  resultCard: {
+    width: "31.9%",
+    minHeight: 58,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  resultName: {
+    fontSize: 6.8,
+    fontFamily: "Helvetica-Bold",
+    marginBottom: 5,
+  },
+  resultCount: {
+    fontSize: 13,
+    fontFamily: "Helvetica-Bold",
+    marginBottom: 4,
+  },
+  resultMeta: { fontSize: 6.5, color: SAND_4 },
+  alert: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    fontSize: 7,
+    lineHeight: 1.45,
+  },
+  alertTitle: { fontFamily: "Helvetica-Bold" },
+  traceTable: {
+    borderWidth: 1,
+    borderColor: SAND_2,
+  },
+  traceHeader: {
+    flexDirection: "row",
+    backgroundColor: SAND_1,
+    borderBottomWidth: 1,
+    borderBottomColor: SAND_2,
+  },
+  traceRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: SAND_2,
+  },
+  traceRowLast: { flexDirection: "row" },
+  traceHeadCell: {
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    fontSize: 5.8,
+    fontFamily: "Courier-Bold",
+    color: SAND_4,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  traceCell: {
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    fontSize: 6.7,
+  },
+  traceTechnical: { fontFamily: "Courier", fontSize: 6.4 },
+  certificateAlert: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#EDB6B1",
+    borderRadius: 6,
+    backgroundColor: FAIL_BG,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    fontSize: 7,
+    lineHeight: 1.45,
+    color: BLACK,
+  },
   footer: {
     position: "absolute",
     bottom: 20,
@@ -207,27 +375,17 @@ const styles = StyleSheet.create({
     right: 32,
     paddingTop: 5,
     borderTopWidth: 1,
-    borderTopColor: RULE_SOFT,
+    borderTopColor: SAND_2,
     flexDirection: "row",
     justifyContent: "space-between",
+    fontFamily: "Courier",
     fontSize: 6,
-    color: "#8C99A6",
-  },
-  watermark: {
-    position: "absolute",
-    top: "44%",
-    left: 0,
-    right: 0,
-    textAlign: "center",
-    fontSize: 74,
-    color: "#EDF3F9",
-    fontFamily: "Helvetica-Bold",
-    letterSpacing: 6,
+    color: SAND_4,
   },
 });
 
 const NA = "N/A";
-const EMPTY = "—";
+const EMPTY = "-";
 
 function statusChipStyle(status: string) {
   if (status === "PASS") return { color: PASS, backgroundColor: PASS_BG };
@@ -245,6 +403,27 @@ function Field({ label, value, last }: { label: string; value: string; last?: bo
   );
 }
 
+function SummaryCell({
+  label,
+  value,
+  border,
+  technical,
+}: {
+  label: string;
+  value: string;
+  border?: boolean;
+  technical?: boolean;
+}) {
+  return (
+    <View style={[styles.summaryCell, border ? styles.summaryCellBorder : {}]}>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={[styles.summaryValue, technical ? styles.summaryTechnical : {}]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 function SectionBar({ children }: { children: string }) {
   return (
     <View style={styles.sectionBar}>
@@ -255,21 +434,21 @@ function SectionBar({ children }: { children: string }) {
 
 function BrandHeader({
   report,
-  eyebrow,
   locale,
 }: {
   report: PdfReport;
-  eyebrow: string;
   locale: Locale;
 }) {
   const t = createTranslator(locale);
   return (
     <View style={styles.header} fixed>
       <View style={styles.headerLeft}>
-        <SigLogo width={44} />
+        <View style={styles.logoBox}>
+          <SigLogo width={24} />
+        </View>
         <View>
-          <Text style={styles.headerTitle}>Vapor Sterilant Technology</Text>
-          <Text style={styles.headerSub}>{eyebrow}</Text>
+          <Text style={styles.headerTitle}>Calibration Report</Text>
+          <Text style={styles.headerSub}>Vapor Sterilant Technology</Text>
         </View>
       </View>
       <View style={styles.headerRight}>
@@ -304,7 +483,7 @@ function SignatureSlot({
       </View>
       <Text style={styles.caption}>
         {signature
-          ? `${signature.signerName} · ${signature.signerTitle} · ${signature.signedAt}`
+          ? `${signature.signerName} - ${signature.signerTitle} - ${signature.signedAt}`
           : t("pdf.pendingValidation")}
       </Text>
     </View>
@@ -315,52 +494,175 @@ function Footer({ report, locale }: { report: PdfReport; locale: Locale }) {
   const t = createTranslator(locale);
   return (
     <View style={styles.footer} fixed>
-      <Text>{report.reportNumber}</Text>
-      <Text>SIG · Vapor Sterilant Technology</Text>
+      <Text>{t("pdf.confidential")}</Text>
       <Text
         render={({ pageNumber, totalPages }) =>
-          t("pdf.pageOf", { page: pageNumber, total: totalPages })
+          `${t("pdf.generated", { date: report.serviceDate })} - ${t("pdf.pageOf", {
+            page: pageNumber,
+            total: totalPages,
+          })}`
         }
       />
     </View>
   );
 }
 
-function DraftWatermark({ report, locale }: { report: PdfReport; locale: Locale }) {
-  if (report.status !== "DRAFT") return null;
-  return (
-    <Text style={styles.watermark} fixed>
-      {translate(locale, "pdf.draft")}
-    </Text>
-  );
-}
-
 function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
   const t = createTranslator(locale);
+  const hasDeviation = report.certificates.some(
+    (certificate) =>
+      certificate.overallStatus === "FAIL" ||
+      certificate.overallStatus === "MIXED" ||
+      certificate.columns.some((column) => column.status === "FAIL")
+  );
+  const standards = Array.from(
+    new Map(
+      report.certificates.map((certificate) => [
+        certificate.standard.serial,
+        certificate.standard,
+      ])
+    ).values()
+  );
+  const certificateSummary = report.certificates.map((certificate) => {
+    const channels = certificate.columns.filter((column) => !column.excluded);
+    return {
+      certificate,
+      pass: channels.filter((column) => column.status === "PASS").length,
+      total: channels.length,
+    };
+  });
+  const certificateNames = report.certificates
+    .map((certificate) =>
+      certificate.title
+        .replace(" Calibration Certificate", "")
+        .replace(" Certificado de calibración", "")
+    )
+    .join(" - ");
+
   return (
     <Page size="LETTER" style={styles.page}>
-      <DraftWatermark report={report} locale={locale} />
-      <BrandHeader report={report} eyebrow={t("pdf.fieldServiceReport")} locale={locale} />
+      <BrandHeader report={report} locale={locale} />
 
-      <Text style={styles.docTitle}>{t("pdf.fieldServiceReport")}</Text>
-      <Text style={styles.docLead}>{t("pdf.introduction")}</Text>
+      <Text style={styles.coverEyebrow}>{t("pdf.certificateOfCalibration")}</Text>
+      <View style={styles.titleRow}>
+        <View>
+          <Text style={styles.docTitle}>
+            {t("pdf.asepticFillerTitle", { model: report.filler.model })}
+          </Text>
+          <Text style={styles.coverSubtitle}>{certificateNames}</Text>
+        </View>
+        <Text
+          style={[
+            styles.chip,
+            hasDeviation
+              ? { color: FAIL, backgroundColor: FAIL_BG }
+              : { color: PASS, backgroundColor: PASS_BG },
+          ]}
+        >
+          {hasDeviation ? t("pdf.deviationRecorded") : t("pdf.calibrationComplete")}
+        </Text>
+      </View>
 
-      <SectionBar>{t("pdf.details")}</SectionBar>
-      <View style={styles.table}>
-        <Field label={t("pdf.reportNumber")} value={report.reportNumber} />
-        <Field label={t("pdf.date")} value={report.serviceDate} />
-        <Field label={t("pdf.preparedBy")} value={report.preparedBy.name} />
-        <Field label={t("pdf.title")} value={report.preparedBy.title} />
-        <Field label={t("pdf.contactEmail")} value={report.preparedBy.email} />
-        <Field label={t("pdf.client")} value={report.client.name} />
-        <Field label={t("pdf.clientAddress")} value={report.client.address} />
-        <Field label={t("pdf.city")} value={report.client.city} />
-        <Field
-          label={t("pdf.zipState")}
-          value={`${report.client.zip} / ${report.client.state}`}
-        />
-        <Field label={t("pdf.fillerModel")} value={report.filler.model} />
-        <Field label={t("pdf.fillerSerial")} value={report.filler.serial} last />
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryRow}>
+          <SummaryCell
+            label={t("pdf.reportNumber")}
+            value={report.reportNumber}
+            border
+            technical
+          />
+          <SummaryCell
+            label={t("pdf.client")}
+            value={`${report.client.name} - ${report.client.city}`}
+            border
+          />
+          <SummaryCell label={t("pdf.serviceDate")} value={report.serviceDate} technical />
+        </View>
+        <View style={styles.summaryRowLast}>
+          <SummaryCell
+            label={t("pdf.fillerModel")}
+            value={`${report.filler.model}\nSN ${report.filler.serial}`}
+            border
+          />
+          <SummaryCell
+            label={t("pdf.plantLine")}
+            value={`${report.client.city} / ${report.client.state}`}
+            border
+          />
+          <SummaryCell
+            label={t("pdf.serviceEngineer")}
+            value={`${report.preparedBy.name}\n${report.preparedBy.title}`}
+          />
+        </View>
+      </View>
+
+      <Text style={styles.sectionTitle}>{t("pdf.summaryResults")}</Text>
+      <View style={styles.resultGrid}>
+        {certificateSummary.map(({ certificate, pass, total }) => {
+          const failed =
+            certificate.overallStatus === "FAIL" || certificate.overallStatus === "MIXED";
+          const tone = failed
+            ? { color: FAIL, borderColor: "#EDB6B1", backgroundColor: FAIL_BG }
+            : { color: PASS, borderColor: "#A9D7BC", backgroundColor: PASS_BG };
+          return (
+            <View key={certificate.certificateType} style={[styles.resultCard, tone]}>
+              <Text style={styles.resultName}>
+                {certificate.title
+                  .replace(" Calibration Certificate", "")
+                  .replace(" Certificado de calibración", "")}
+              </Text>
+              <Text style={styles.resultCount}>
+                {t("pdf.passCount", { pass, total })}
+              </Text>
+              <Text style={styles.resultMeta}>
+                {t("pdf.toleranceLabel", { tolerance: certificate.tolerance || "-" })}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      <Text
+        style={[
+          styles.alert,
+          hasDeviation
+            ? { borderColor: "#EDB6B1", backgroundColor: FAIL_BG, color: FAIL }
+            : { borderColor: "#A9D7BC", backgroundColor: PASS_BG, color: PASS },
+        ]}
+      >
+        <Text style={styles.alertTitle}>
+          {hasDeviation ? `${t("pdf.deviationRecorded")}. ` : `${t("pdf.calibrationComplete")}. `}
+        </Text>
+        {hasDeviation ? t("pdf.overallDeviation") : t("pdf.overallComplete")}
+      </Text>
+
+      <Text style={styles.sectionTitle}>{t("pdf.referenceTraceability")}</Text>
+      <View style={styles.traceTable}>
+        <View style={styles.traceHeader}>
+          <Text style={[styles.traceHeadCell, { width: "45%" }]}>{t("pdf.standard")}</Text>
+          <Text style={[styles.traceHeadCell, { width: "18%" }]}>{t("pdf.serial")}</Text>
+          <Text style={[styles.traceHeadCell, { width: "20%" }]}>{t("pdf.certificate")}</Text>
+          <Text style={[styles.traceHeadCell, { width: "17%" }]}>{t("pdf.validTo")}</Text>
+        </View>
+        {standards.map((standard, index) => (
+          <View
+            key={standard.serial}
+            style={index === standards.length - 1 ? styles.traceRowLast : styles.traceRow}
+          >
+            <Text style={[styles.traceCell, { width: "45%" }]}>
+              {standard.description} - {standard.manufacturer} {standard.model}
+            </Text>
+            <Text style={[styles.traceCell, styles.traceTechnical, { width: "18%" }]}>
+              {standard.serial}
+            </Text>
+            <Text style={[styles.traceCell, styles.traceTechnical, { width: "20%" }]}>
+              {standard.certNumber}
+            </Text>
+            <Text style={[styles.traceCell, styles.traceTechnical, { width: "17%" }]}>
+              {standard.validTo}
+            </Text>
+          </View>
+        ))}
       </View>
 
       <View style={styles.twoCol}>
@@ -369,7 +671,7 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
           <Text style={styles.observations}>{report.observations ?? EMPTY}</Text>
         </View>
         <View style={styles.col}>
-          <SignatureSlot signature={report.signature} label={t("pdf.signature")} locale={locale} />
+          <SignatureSlot signature={report.signature} label={t("pdf.signOff")} locale={locale} />
         </View>
       </View>
 
@@ -485,15 +787,37 @@ function CertificatePage({
   const t = createTranslator(locale);
   const { columns } = certificate;
   const span = columns.length;
+  const evaluatedColumns = columns.filter((column) => !column.excluded);
+  const passCount = evaluatedColumns.filter((column) => column.status === "PASS").length;
+  const issues = [
+    certificate.notes,
+    ...columns
+      .filter((column) => column.status === "FAIL")
+      .map(
+        (column) =>
+          column.statusReason ||
+          `${column.tagNumber} ${column.description}: ${translate(locale, "pdf.deviationRecorded")}`
+      ),
+  ].filter((issue): issue is string => Boolean(issue));
   const pointOf = (column: PdfDeviceColumn, kind: PointKind) =>
     column.points.find((point) => point.kind === kind) ?? null;
 
   return (
     <Page size="LETTER" style={styles.page}>
-      <DraftWatermark report={report} locale={locale} />
-      <BrandHeader report={report} eyebrow={certificate.title} locale={locale} />
+      <BrandHeader report={report} locale={locale} />
 
-      <Text style={styles.certTitle}>{certificate.title}</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.certTitle}>{certificate.title}</Text>
+        <Text style={[styles.chip, statusChipStyle(certificate.overallStatus)]}>
+          {certificate.overallStatus === "PASS"
+            ? `${t("measurement.pass")} - ${passCount}/${evaluatedColumns.length}`
+            : certificate.overallStatus === "FAIL"
+              ? `${t("measurement.fail")} - ${passCount}/${evaluatedColumns.length}`
+              : certificate.overallStatus === "MIXED"
+                ? `${t("measurement.mixed")} - ${passCount}/${evaluatedColumns.length}`
+                : t("measurement.pending")}
+        </Text>
+      </View>
       <Text style={styles.certLead}>
         {t("pdf.instructions")}
       </Text>
@@ -516,16 +840,6 @@ function CertificatePage({
           zebra
           identity
         />
-
-        {certificate.correctionMethodLabel && (
-          <DataRow
-            label={certificate.correctionMethodLabel}
-            locale={locale}
-            columns={columns}
-            pick={(c) => c.correctionMethod}
-            zebra
-          />
-        )}
 
         {certificate.pointKinds.map((kind) => (
           <React.Fragment key={kind}>
@@ -594,6 +908,15 @@ function CertificatePage({
         ))}
       </View>
 
+      {issues.length > 0 && (
+        <Text style={styles.certificateAlert}>
+          <Text style={[styles.alertTitle, { color: FAIL }]}>
+            {t("pdf.observation")}.{" "}
+          </Text>
+          {issues.join(" ")}
+        </Text>
+      )}
+
       <View style={styles.twoCol}>
         <View style={styles.col}>
           <SectionBar>{t("pdf.standardValidation")}</SectionBar>
@@ -606,6 +929,10 @@ function CertificatePage({
             <Field
               label={t("pdf.calibrationDate")}
               value={certificate.standard.calibrationDate}
+            />
+            <Field
+              label={t("pdf.validTo")}
+              value={certificate.standard.validTo}
               last
             />
           </View>
@@ -616,18 +943,6 @@ function CertificatePage({
             label={t("pdf.signatureDate")}
             locale={locale}
           />
-          <View style={{ marginTop: 8 }}>
-            <Text style={styles.blockLabel}>{t("pdf.result")}</Text>
-            <Text style={[styles.chip, statusChipStyle(certificate.overallStatus)]}>
-              {certificate.overallStatus === "PASS"
-                ? t("measurement.pass")
-                : certificate.overallStatus === "FAIL"
-                  ? t("measurement.fail")
-                  : certificate.overallStatus === "MIXED"
-                    ? t("measurement.mixed")
-                    : t("measurement.pending")}
-            </Text>
-          </View>
         </View>
       </View>
 

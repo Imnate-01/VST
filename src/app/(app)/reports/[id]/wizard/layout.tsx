@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { requireAuth } from "@/server/auth";
 import { getReportForWizard } from "@/server/services/reports";
-import { Button } from "@/components/ui/button";
+import { ReportStatusBadge } from "@/components/report/report-status-badge";
 import { WizardNav } from "@/components/wizard/wizard-nav";
 import { getTranslations } from "@/lib/i18n-server";
+import { formatDateInput } from "@/lib/utils";
 
 type Props = {
   children: React.ReactNode;
@@ -24,25 +25,47 @@ export default async function ReportWizardLayout({ children, params }: Props) {
   if (!data) notFound();
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-3 mb-2">
-            <Link href="/reports">
-              <ArrowLeft className="h-4 w-4" />
-              {t("nav.reports")}
-            </Link>
-          </Button>
-          <h1 className="text-3xl font-bold tracking-tight">{t("wizard.title")}</h1>
-          <p className="text-muted-foreground">
-            {data.report.reportNumber} · {data.report.filler.clientName} ·{" "}
-            {data.report.filler.model.name} #{data.report.filler.serialNumber}
-          </p>
+    <div className="space-y-0">
+      <header className="pb-6">
+        <Link
+          href="/reports"
+          className="mb-5 inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+          {t("nav.reports")}
+        </Link>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="technical-id text-2xl font-semibold text-foreground sm:text-3xl">
+            {data.report.reportNumber}
+          </h1>
+          <ReportStatusBadge status="DRAFT" label={t("reports.status.draft")} />
         </div>
-      </div>
+
+        <dl className="mt-6 grid max-w-3xl gap-x-10 gap-y-4 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-muted-foreground">{t("wizard.client")}</dt>
+            <dd className="mt-1 font-medium text-foreground">
+              {data.report.filler.clientName} — {data.report.filler.clientCity}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">{t("wizard.filler")}</dt>
+            <dd className="technical-id mt-1 font-medium text-foreground">
+              {data.report.filler.model.name} · SN {data.report.filler.serialNumber}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">{t("wizard.service")}</dt>
+            <dd className="technical-id mt-1 font-medium text-foreground">
+              {formatDateInput(data.report.serviceDate)}
+            </dd>
+          </div>
+        </dl>
+      </header>
 
       <WizardNav reportId={id} />
-      {children}
+      <div className="mx-auto w-full max-w-6xl pt-10">{children}</div>
     </div>
   );
 }

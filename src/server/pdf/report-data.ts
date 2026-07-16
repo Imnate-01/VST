@@ -4,7 +4,6 @@ import {
   CERTIFICATE_CONFIG,
   getCertificateLabel,
   getConditionLabel,
-  getCorrectionMethodLabel,
   isPointLayout,
 } from "@/lib/certificates";
 import { DEFAULT_LOCALE, translate, type Locale } from "@/lib/i18n";
@@ -40,7 +39,9 @@ export type PdfDeviceColumn = {
   /** Excluido del alcance: en el PDF original sus celdas van en N/A. */
   excluded: boolean;
   exclusionReason: string | null;
-  correctionMethod: string | null;
+  status: string;
+  statusReason: string | null;
+  requiredAdjustment: boolean;
   points: PdfPoint[];
 };
 
@@ -58,8 +59,9 @@ export type PdfCertificate = {
   pointKinds: readonly PointKind[];
   showDeviation: boolean;
   conditionLabel: string | null;
-  correctionMethodLabel: string | null;
   unit: string;
+  tolerance: string;
+  notes: string | null;
   standard: {
     description: string;
     manufacturer: string;
@@ -67,6 +69,7 @@ export type PdfCertificate = {
     serial: string;
     certNumber: string;
     calibrationDate: string;
+    validTo: string;
   };
   columns: PdfDeviceColumn[];
   signature: PdfSignature | null;
@@ -190,7 +193,9 @@ export async function getReportForPdf(
           description: selection.descriptionSnapshot,
           excluded: !selection.included,
           exclusionReason: selection.exclusionReason,
-          correctionMethod: measurement?.correctionMethod ?? null,
+          status: measurement?.status ?? "PENDING",
+          statusReason: measurement?.statusReason ?? null,
+          requiredAdjustment: measurement?.requiredAdjustment ?? false,
           points: config.pointKinds.map((kind) => {
             const point = pointByKind.get(kind);
 
@@ -210,6 +215,12 @@ export async function getReportForPdf(
       });
 
       const unit = selections[0]?.toleranceUnitSnapshot ?? "";
+      const toleranceSelection = selections.find((selection) => selection.included) ?? selections[0];
+      const tolerance = toleranceSelection
+        ? `${toleranceSelection.toleranceValueSnapshot.toString()}${
+            toleranceSelection.toleranceIsPercentSnapshot ? "%" : ""
+          } ${unit}`.trim()
+        : "";
 
       return {
         certificateType: certificate.certificateType,
@@ -220,8 +231,9 @@ export async function getReportForPdf(
         pointKinds: config.pointKinds,
         showDeviation: config.showDeviation,
         conditionLabel: getConditionLabel(certificate.certificateType, locale),
-        correctionMethodLabel: getCorrectionMethodLabel(certificate.certificateType, locale),
         unit,
+        tolerance,
+        notes: certificate.notes,
         standard: {
           description: certificate.primaryStandard.descriptionSnapshot,
           manufacturer: certificate.primaryStandard.manufacturerSnapshot,
@@ -229,6 +241,7 @@ export async function getReportForPdf(
           serial: certificate.primaryStandard.serialSnapshot,
           certNumber: certificate.primaryStandard.certNumberSnapshot,
           calibrationDate: formatPdfDate(certificate.primaryStandard.calDateSnapshot, locale),
+          validTo: formatPdfDate(certificate.primaryStandard.calExpiresAtSnapshot, locale),
         },
         columns,
         signature: toPdfSignature(certificate.signatures[0], locale),

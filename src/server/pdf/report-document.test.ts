@@ -12,6 +12,11 @@ import { join } from "node:path";
  * debe ser lo mismo que el resaltado visual `strong`.
  */
 const source = readFileSync(join(__dirname, "report-document.tsx"), "utf8");
+const logoSource = readFileSync(join(__dirname, "sig-logo.tsx"), "utf8");
+const wizardSource = readFileSync(
+  join(__dirname, "..", "..", "components", "wizard", "step-certificate-form.tsx"),
+  "utf8"
+);
 
 function rowProps(label: string): string {
   const match = source.match(
@@ -43,5 +48,27 @@ describe("filas de identidad del certificado", () => {
     expect(source).toContain("column.excluded && !identity ? NA");
     // El resaltado depende de strong, no de identity.
     expect(source).toContain("strong ? styles.identity : {}");
+  });
+});
+
+describe("diseño del reporte", () => {
+  it("no agrega marca de agua a los PDF borrador", () => {
+    expect(source).not.toContain("DraftWatermark");
+    expect(source).not.toContain("styles.watermark");
+  });
+
+  it("usa el logo PNG oficial", () => {
+    expect(logoSource).toContain('public", "logo.png"');
+  });
+
+  it("no muestra el método de corrección en wizard ni PDF", () => {
+    expect(wizardSource).not.toContain("correctionMethod");
+    expect(source).not.toContain("correctionMethodLabel");
+  });
+
+  it("usa los tokens principales del sistema visual", () => {
+    expect(source).toContain('const BRAND = "#145EFC"');
+    expect(source).toContain('const SAND_1 = "#F2EFEB"');
+    expect(source).toContain('fontFamily: "Courier-Bold"');
   });
 });

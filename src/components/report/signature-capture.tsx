@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import SignaturePad from "signature_pad";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
@@ -30,6 +31,7 @@ export function SignatureCapture({
   onSign,
 }: Props) {
   const { locale, t } = useLanguage();
+  const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const padRef = useRef<SignaturePad | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
@@ -109,23 +111,24 @@ export function SignatureCapture({
         return;
       }
       setResigning(false);
+      router.refresh();
     });
   }
 
   return (
-    <section className="rounded-lg border bg-white p-4">
+    <section className="rounded-xl border bg-white p-4">
       <div className="mb-1 text-sm font-semibold">{title}</div>
       <p className="mb-3 text-xs text-muted-foreground">{description}</p>
 
       {blockedReason && (
-        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <p className="rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-xs text-warning">
           {blockedReason}
         </p>
       )}
 
       {existing && !resigning && (
         <div className="space-y-3">
-          <div className="rounded-md border bg-slate-50 p-3">
+          <div className="rounded-lg border bg-muted p-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={existing.signatureImageUrl}
@@ -152,7 +155,7 @@ export function SignatureCapture({
         <div className="space-y-3">
           <canvas
             ref={canvasRef}
-            className="h-40 w-full touch-none rounded-md border-2 border-dashed border-slate-300 bg-white"
+            className="h-40 w-full touch-none rounded-lg border-2 border-dashed border-input bg-white focus-visible:border-primary focus-visible:outline-none"
           />
 
           {error && <p className="text-xs text-destructive">{error}</p>}

@@ -49,7 +49,7 @@ export default async function ReportDetailPage({ params }: Props) {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{report.reportNumber}</h1>
+          <h1 className="technical-id text-3xl font-bold">{report.reportNumber}</h1>
           <p className="text-muted-foreground">
             {report.filler.clientName} · {report.filler.model.name} #
             {report.filler.serialNumber}

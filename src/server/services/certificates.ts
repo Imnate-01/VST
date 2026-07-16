@@ -14,6 +14,7 @@ import {
   evaluatePointSet,
   type MeasurementOverall,
 } from "@/server/domain/calibration";
+import { hasCompleteCertificateMeasurement } from "@/server/domain/certificate-completeness";
 import { getCertificateConfig, isPointLayout } from "@/lib/certificates";
 import { logAudit } from "@/server/services/audit";
 import { revokeCertificateSignatures } from "@/server/services/signatures";
@@ -156,11 +157,19 @@ function passState(reference: Decimal | null, reading: Decimal | null) {
  * que ajustarlo. deviation = reading - reference. Ver el motor de dominio.
  */
 export function calculateMeasurementStatus(params: {
+  certificateType: CertificateType;
   input: CertificateMeasurementRowInput;
   toleranceValue: Decimal | string;
   toleranceIsPercent: boolean;
 }): CalculatedMeasurement {
   const rawPoints = params.input.points.map(rawPoint);
+
+  if (!hasCompleteCertificateMeasurement(params.certificateType, params.input.points)) {
+    return pendingMeasurement(
+      rawPoints,
+      "Completa todos los puntos y campos de medición antes de firmar"
+    );
+  }
 
   const passes = rawPoints.map((point) => ({
     found: passState(point.asFoundReference, point.asFoundReading),
@@ -376,6 +385,7 @@ export async function upsertCertificateMeasurement(
     }
 
     const calculated = calculateMeasurementStatus({
+      certificateType: certificate.certificateType,
       input: measurementInput,
       toleranceValue: selection.toleranceValueSnapshot.toString(),
       toleranceIsPercent: selection.toleranceIsPercentSnapshot,

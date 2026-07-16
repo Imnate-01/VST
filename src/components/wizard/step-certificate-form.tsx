@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { CertificateType, MeasurementStatus, PointKind } from "@prisma/client";
+import { Check, Clock3, TriangleAlert, X } from "lucide-react";
 import { upsertMeasurement } from "@/server/actions/measurements";
 import {
   getUpsertMeasurementSchema,
@@ -12,11 +14,11 @@ import {
 import {
   getCertificateConfig,
   getConditionLabel,
-  getCorrectionMethodLabel,
   getMeasuredQuantity,
   getPointKindLabel,
+  certificateHref,
+  implementedCertificateTypes,
 } from "@/lib/certificates";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -27,6 +29,7 @@ import {
 import { MeasurementStatusBadge } from "@/components/report/measurement-status-badge";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
+import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
 
 export type MeasurementRow = {
   deviceSelectionId: string;
@@ -49,6 +52,8 @@ type Props = {
   certificateType: CertificateType;
   rows: MeasurementRow[];
   initialValues: UpsertMeasurementInput;
+  onDirtyChange?: (dirty: boolean) => void;
+  onSaved?: (status: "PENDING" | "PASS" | "FAIL" | "MIXED") => void;
 };
 
 type PointStatus = "PASS" | "FAIL" | "PENDING";
@@ -109,15 +114,17 @@ function evalPass(params: {
 
 function StatusCell({ status }: { status: PointStatus }) {
   const { t } = useLanguage();
+  const Icon = status === "PASS" ? Check : status === "FAIL" ? X : Clock3;
   return (
     <div
       className={cn(
-        "flex h-8 items-center justify-center text-xs font-bold uppercase tracking-wide",
-        status === "PASS" && "bg-emerald-50 text-emerald-700",
-        status === "FAIL" && "bg-red-50 text-red-700",
-        status === "PENDING" && "bg-slate-50 text-slate-400"
+        "flex h-8 items-center justify-center gap-1.5 text-xs font-semibold",
+        status === "PASS" && "bg-success-muted text-success",
+        status === "FAIL" && "bg-destructive/5 text-destructive",
+        status === "PENDING" && "bg-muted text-muted-foreground"
       )}
     >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {status === "PENDING"
         ? t("measurement.pending")
         : status === "PASS"
@@ -132,9 +139,9 @@ function DisplayCell({ value, status }: { value: string; status?: PointStatus })
     <div
       className={cn(
         "tabular flex h-8 items-center justify-end px-3 text-right",
-        value && status === "PASS" && "bg-emerald-50 font-medium text-emerald-800",
-        value && status === "FAIL" && "bg-red-50 font-medium text-red-800",
-        !value && "text-slate-400"
+        value && status === "PASS" && "bg-success-muted font-medium text-success",
+        value && status === "FAIL" && "bg-destructive/5 font-medium text-destructive",
+        !value && "text-muted-foreground"
       )}
     >
       {value || "—"}
@@ -157,11 +164,10 @@ function InputCell({
       inputMode="decimal"
       placeholder={placeholder}
       className={cn(
-        "tabular h-8 w-full px-3 text-right font-medium text-sig-900 outline-none ring-inset transition-colors focus:bg-white focus:ring-2 focus:ring-sig-500",
-        // El amarillo marca "celda capturable": es convención del reporte en papel.
+        "tabular h-8 w-full px-3 text-right font-medium text-foreground outline-none ring-inset transition-colors focus:bg-white focus:ring-2 focus:ring-primary",
         tone === "capture" &&
-          "bg-amber-50 placeholder:font-normal placeholder:text-amber-700/40 hover:bg-amber-100/70",
-        tone === "nominal" && "bg-white placeholder:font-normal placeholder:text-slate-300"
+          "bg-muted/70 placeholder:font-normal placeholder:text-muted-foreground hover:bg-muted",
+        tone === "nominal" && "bg-white placeholder:font-normal placeholder:text-muted-foreground"
       )}
       {...registration}
     />
@@ -169,7 +175,7 @@ function InputCell({
 }
 
 function LabelCell({ children }: { children: React.ReactNode }) {
-  return <td className="w-[58%] px-3 py-0 text-slate-600">{children}</td>;
+  return <td className="w-[58%] px-3 py-0 text-muted-foreground">{children}</td>;
 }
 
 function SectionRow({ children }: { children: string }) {
@@ -177,7 +183,7 @@ function SectionRow({ children }: { children: string }) {
     <tr>
       <td
         colSpan={2}
-        className="bg-sig-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-sig-800"
+        className="eyebrow bg-muted px-3 py-1"
       >
         {children}
       </td>
@@ -306,13 +312,14 @@ function PointTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-sig-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between bg-sig-700 px-3 py-2">
+    <div className="overflow-hidden rounded-xl border border-input bg-white">
+      <div className="flex items-center justify-between bg-primary px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-white">
           {getPointKindLabel(kind, locale)}
         </span>
         {requiredAdjustment && (
-          <span className="rounded-full bg-amber-400/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">
+          <span className="inline-flex items-center gap-1 rounded-md border border-warning/25 bg-warning-muted px-2 py-0.5 text-[10px] font-semibold text-warning">
+            <TriangleAlert className="h-3 w-3" aria-hidden="true" />
             {t("measurement.adjusted")}
           </span>
         )}
@@ -321,7 +328,7 @@ function PointTable({
       {/* Fuera de la tabla: un <input> no puede ser hijo directo de <tbody>. */}
       <input type="hidden" {...register(`${base}.kind` as never)} />
 
-      <table className="w-full border-collapse text-xs text-slate-700">
+      <table className="w-full border-collapse text-xs text-muted-foreground">
         <tbody>
           {getConditionLabel(certificateType, locale) && (
             <tr className="border-b border-sig-100">
@@ -380,9 +387,12 @@ export function StepCertificateForm({
   certificateType,
   rows,
   initialValues,
+  onDirtyChange,
+  onSaved,
 }: Props) {
   const config = getCertificateConfig(certificateType);
   const { locale, t } = useLanguage();
+  const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -392,6 +402,11 @@ export function StepCertificateForm({
   });
   const { fields } = useFieldArray({ control: form.control, name: "measurements" });
   const watchedMeasurements = useWatch({ control: form.control, name: "measurements" });
+  const isDirty = form.formState.isDirty;
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const savedSummary = useMemo(
     () => ({
@@ -409,12 +424,29 @@ export function StepCertificateForm({
       const result = await upsertMeasurement(values);
       if (result?.ok === false) {
         setServerError(result.message);
+        return;
+      }
+      form.reset(values);
+      if (result?.certificateStatus) {
+        onSaved?.(result.certificateStatus);
+      }
+      router.refresh();
+      if (result?.certificateStatus !== "PENDING") {
+        document
+          .getElementById("certificate-signature")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     });
   }
 
   const gridClass =
     config.pointKinds.length > 1 ? "grid gap-4 xl:grid-cols-2" : "grid gap-4 xl:max-w-lg";
+  const certificateIndex = implementedCertificateTypes.indexOf(certificateType);
+  const previousCertificate =
+    certificateIndex > 0 ? implementedCertificateTypes[certificateIndex - 1] : undefined;
+  const previousHref = previousCertificate
+    ? certificateHref(reportId, previousCertificate)
+    : `/reports/${reportId}/wizard/standards`;
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -422,12 +454,12 @@ export function StepCertificateForm({
       <input type="hidden" value={certificateId} {...form.register("certificateId")} />
       <input type="hidden" value={certificateType} {...form.register("certificateType")} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
+      <Card className="border-0 bg-transparent">
+        <CardHeader className="px-0 pt-0">
+          <CardTitle className="text-2xl">{title}</CardTitle>
           <CardDescription>{description}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-5 px-0">
           {serverError && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {serverError}
@@ -448,7 +480,8 @@ export function StepCertificateForm({
               {t("measurement.savedPending", { count: savedSummary.pending })}
             </span>
             {savedSummary.adjusted > 0 && (
-              <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">
+              <span className="status-badge border-warning/25 bg-warning-muted text-warning">
+                <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
                 {t("measurement.adjustedCount", { count: savedSummary.adjusted })}
               </span>
             )}
@@ -463,9 +496,9 @@ export function StepCertificateForm({
                 <section
                   key={field.id}
                   className={cn(
-                    "rounded-xl border border-sig-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md",
+                    "rounded-xl border bg-white p-5 transition-colors",
                     row.status === MeasurementStatus.FAIL &&
-                      "border-red-200 bg-red-50/20"
+                      "border-destructive/30 bg-destructive/[0.02]"
                   )}
                 >
                   <input
@@ -475,11 +508,11 @@ export function StepCertificateForm({
 
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-start gap-3">
-                      <span className="tabular rounded-md bg-sig-700 px-2.5 py-1 text-xs font-bold text-white">
+                      <span className="tabular rounded-md bg-primary px-2.5 py-1 text-xs font-bold text-white">
                         {row.tagNumber}
                       </span>
                       <div>
-                        <div className="text-sm font-semibold text-sig-900">
+                        <div className="text-sm font-semibold text-foreground">
                           {row.description}
                         </div>
                         <div className="text-xs text-muted-foreground">
@@ -498,19 +531,6 @@ export function StepCertificateForm({
 
                   {row.statusReason && (
                     <p className="mb-3 text-xs text-muted-foreground">{row.statusReason}</p>
-                  )}
-
-                  {getCorrectionMethodLabel(certificateType, locale) && (
-                    <label className="mb-3 flex items-center gap-2 text-xs">
-                      <span className="text-muted-foreground">
-                        {getCorrectionMethodLabel(certificateType, locale)}
-                      </span>
-                      <input
-                        className="h-8 w-40 rounded-md border border-sig-200 bg-amber-50 px-2.5 outline-none ring-inset transition-colors focus:bg-white focus:ring-2 focus:ring-sig-500"
-                        placeholder={t("correction.internal")}
-                        {...form.register(`measurements.${measurementIndex}.correctionMethod`)}
-                      />
-                    </label>
                   )}
 
                   <div className={gridClass}>
@@ -538,11 +558,13 @@ export function StepCertificateForm({
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={isPending || rows.length === 0}>
-          {isPending ? t("common.saving") : t("common.saveContinue")}
-        </Button>
-      </div>
+      <WizardFormFooter
+        previousHref={previousHref}
+        pending={isPending}
+        disabled={rows.length === 0}
+        submitLabel={t("common.save")}
+        hint={t("certificate.saveToSign")}
+      />
     </form>
   );
 }

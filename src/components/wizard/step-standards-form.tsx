@@ -8,12 +8,12 @@ import {
   getReportStandardsSchema,
   type ReportStandardsInput,
 } from "@/lib/validations/reports";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 import { getCertificateLabel } from "@/lib/certificates";
 import type { CertificateType } from "@prisma/client";
+import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
 
 type StandardOption = {
   id: string;
@@ -68,14 +68,14 @@ export function StepStandardsForm({
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
       <input type="hidden" value={reportId} {...form.register("reportId")} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("standards.title")}</CardTitle>
+      <Card className="border-0 bg-transparent">
+        <CardHeader className="px-0 pt-0">
+          <CardTitle className="text-2xl">{t("standards.title")}</CardTitle>
           <CardDescription>
             {t("standards.description", { date: serviceDateLabel })}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-5 px-0">
           {serverError && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {serverError}
@@ -83,7 +83,7 @@ export function StepStandardsForm({
           )}
 
           {requiredTypes.length === 0 ? (
-            <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+            <div className="rounded-lg border bg-muted/60 p-4 text-sm text-muted-foreground">
               {t("standards.empty")}
             </div>
           ) : (
@@ -93,7 +93,7 @@ export function StepStandardsForm({
                 const error = form.formState.errors.standards?.[index]?.standardInstrumentId;
 
                 return (
-                  <div key={field.id} className="rounded-lg border p-4">
+                  <div key={field.id} className="rounded-xl border bg-white p-4">
                     <input
                       type="hidden"
                       {...form.register(`standards.${index}.certificateType`)}
@@ -102,7 +102,7 @@ export function StepStandardsForm({
                       {getCertificateLabel(type as CertificateType, locale)}
                     </div>
                     <select
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      className="technical-id flex h-10 w-full rounded-lg border border-input bg-white px-3 py-1 text-sm"
                       {...form.register(`standards.${index}.standardInstrumentId`)}
                     >
                       <option value="">{t("standards.select")}</option>
@@ -128,11 +128,11 @@ export function StepStandardsForm({
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={isPending}>
-          {isPending ? t("common.saving") : t("standards.finish")}
-        </Button>
-      </div>
+      <WizardFormFooter
+        previousHref={`/reports/${reportId}/wizard/devices`}
+        pending={isPending}
+        submitLabel={t("standards.finish")}
+      />
     </form>
   );
 }

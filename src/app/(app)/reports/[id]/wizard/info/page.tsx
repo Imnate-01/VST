@@ -20,6 +20,8 @@ export default async function WizardInfoPage({ params }: Props) {
 
   return (
     <StepInfoForm
+      preparedByName={data.report.preparedBy.name}
+      reportNumber={data.report.reportNumber}
       initialValues={{
         reportId: data.report.id,
         serviceDate: formatDateInput(data.report.serviceDate),

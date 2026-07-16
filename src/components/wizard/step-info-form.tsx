@@ -5,11 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { updateReportInfo } from "@/server/actions/reports";
 import { getReportInfoSchema, type ReportInfoInput } from "@/lib/validations/reports";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLanguage } from "@/components/language-provider";
+import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
 
 type FillerOption = {
   id: string;
@@ -23,11 +22,13 @@ type FillerOption = {
 };
 
 type Props = {
+  preparedByName: string;
+  reportNumber: string;
   initialValues: ReportInfoInput;
   fillers: FillerOption[];
 };
 
-export function StepInfoForm({ initialValues, fillers }: Props) {
+export function StepInfoForm({ preparedByName, reportNumber, initialValues, fillers }: Props) {
   const { locale, t } = useLanguage();
   const [serverError, setServerError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -52,86 +53,76 @@ export function StepInfoForm({ initialValues, fillers }: Props) {
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={form.handleSubmit(onSubmit)}>
       <input type="hidden" {...form.register("reportId")} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("info.title")}</CardTitle>
-          <CardDescription>
-            {t("info.description")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {serverError && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {serverError}
-            </div>
-          )}
+      <section>
+        <h2 className="text-2xl font-semibold text-foreground">{t("info.title")}</h2>
+        <p className="mt-2 text-muted-foreground">{t("info.description")}</p>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="serviceDate">{t("report.serviceDate")}</Label>
-              <Input id="serviceDate" type="date" {...form.register("serviceDate")} />
-              {form.formState.errors.serviceDate && (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.serviceDate.message}
-                </p>
-              )}
-            </div>
+        {serverError && (
+          <div className="mt-6 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {serverError}
+          </div>
+        )}
 
-            <div className="space-y-2">
-              <Label htmlFor="fillerId">{t("info.filler")}</Label>
+        <dl className="mt-8 grid overflow-hidden rounded-xl border bg-white sm:grid-cols-2">
+          <div className="border-b p-5 sm:border-r">
+            <dt className="text-sm text-muted-foreground">{t("info.preparedBy")}</dt>
+            <dd className="mt-1 font-semibold text-foreground">{preparedByName}</dd>
+          </div>
+          <div className="border-b p-5">
+            <dt className="text-sm text-muted-foreground">{t("info.reportNumber")}</dt>
+            <dd className="technical-id mt-1 font-semibold text-foreground">{reportNumber}</dd>
+          </div>
+          <div className="border-b p-5 sm:border-b-0 sm:border-r">
+            <dt className="text-sm text-muted-foreground">{t("info.client")}</dt>
+            <dd className="mt-1 font-semibold text-foreground">
+              {selectedFiller
+                ? `${selectedFiller.clientName} — ${selectedFiller.clientCity}`
+                : "—"}
+            </dd>
+          </div>
+          <div className="p-5">
+            <dt className="text-sm text-muted-foreground">{t("info.filler")}</dt>
+            <dd className="mt-1">
               <select
-                id="fillerId"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                aria-label={t("info.filler")}
+                className="technical-id -ml-2 h-9 max-w-full rounded-md border border-transparent bg-transparent px-2 font-semibold text-foreground outline-none transition-colors hover:border-input focus:border-primary focus:ring-2 focus:ring-primary/20"
                 {...form.register("fillerId")}
               >
                 {fillers.map((filler) => (
                   <option key={filler.id} value={filler.id}>
-                    {filler.clientName} · {filler.modelName} #{filler.serialNumber}
+                    {filler.modelName} · SN {filler.serialNumber}
                   </option>
                 ))}
               </select>
               {form.formState.errors.fillerId && (
-                <p className="text-xs text-destructive">
+                <p className="mt-1 text-xs text-destructive">
                   {form.formState.errors.fillerId.message}
                 </p>
               )}
-            </div>
+            </dd>
           </div>
+        </dl>
 
-          {selectedFiller && (
-            <div className="rounded-lg border bg-muted/30 p-4">
-              <div className="mb-3 text-sm font-medium">{t("info.clientPreview")}</div>
-              <dl className="grid gap-3 text-sm md:grid-cols-2">
-                <div>
-                  <dt className="text-muted-foreground">{t("info.client")}</dt>
-                  <dd className="font-medium">{selectedFiller.clientName}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">{t("info.modelSerial")}</dt>
-                  <dd className="font-medium">
-                    {selectedFiller.modelName} #{selectedFiller.serialNumber}
-                  </dd>
-                </div>
-                <div className="md:col-span-2">
-                  <dt className="text-muted-foreground">{t("info.address")}</dt>
-                  <dd className="font-medium">
-                    {selectedFiller.clientAddress}, {selectedFiller.clientCity},{" "}
-                    {selectedFiller.clientState} {selectedFiller.clientZip}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          )}
+        <div className="mt-8 grid gap-6 md:grid-cols-[minmax(0,0.7fr)_minmax(0,1.5fr)]">
+          <div className="space-y-2">
+            <Label htmlFor="serviceDate">{t("report.serviceDate")}</Label>
+            <Input id="serviceDate" type="date" {...form.register("serviceDate")} />
+            {form.formState.errors.serviceDate && (
+              <p className="text-xs text-destructive">
+                {form.formState.errors.serviceDate.message}
+              </p>
+            )}
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="observations">{t("info.observations")}</Label>
             <textarea
               id="observations"
-              rows={4}
-              className="flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              rows={5}
+              className="flex min-h-32 w-full rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/25"
               placeholder={t("info.observationsPlaceholder")}
               {...form.register("observations")}
             />
@@ -141,14 +132,14 @@ export function StepInfoForm({ initialValues, fillers }: Props) {
               </p>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <div className="flex justify-end">
-        <Button type="submit" disabled={isPending}>
-          {isPending ? t("common.saving") : t("common.saveContinue")}
-        </Button>
-      </div>
+      <WizardFormFooter
+        previousHref="/reports"
+        pending={isPending}
+        submitLabel={t("common.saveContinue")}
+      />
     </form>
   );
 }
