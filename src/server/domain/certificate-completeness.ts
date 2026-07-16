@@ -13,6 +13,17 @@ export type CompletenessPoint = {
   asLeftReading?: PointValue;
 };
 
+type ReadingValue = {
+  value?: PointValue;
+  target?: PointValue;
+};
+
+type VerificationValue = {
+  scfm?: PointValue;
+  driveFrequencyHz?: PointValue;
+  notApplicable: boolean;
+};
+
 function hasValue(value: PointValue): boolean {
   if (value === null || value === undefined) return false;
   return value.toString().trim() !== "";
@@ -44,4 +55,32 @@ export function hasCompleteCertificateMeasurement(
       hasValue(point.asLeftReading)
     );
   });
+}
+
+export function hasCompleteTestReadings(
+  expectedCount: number,
+  readings: ReadingValue[]
+): boolean {
+  if (readings.length !== expectedCount) return false;
+
+  return readings.every(
+    (reading) => hasValue(reading.target) && hasValue(reading.value)
+  );
+}
+
+/**
+ * En la plantilla de extracción, N/A aplica a la frecuencia del variador; la
+ * lectura SCFM sigue siendo obligatoria.
+ */
+export function hasCompleteVerificationRows(
+  rows: VerificationValue[]
+): boolean {
+  return (
+    rows.length > 0 &&
+    rows.every(
+      (row) =>
+        hasValue(row.scfm) &&
+        (row.notApplicable || hasValue(row.driveFrequencyHz))
+    )
+  );
 }

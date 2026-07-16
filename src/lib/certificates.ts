@@ -34,6 +34,8 @@ export type CertificateConfig = {
   testReadingCount?: number;
   /** ¿Está implementada la captura en la app? */
   implemented: boolean;
+  /** Se crea aunque no provenga de un dispositivo del checklist. */
+  alwaysRequired?: boolean;
 };
 
 export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
@@ -128,7 +130,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     measuredQuantity: "mass",
     showDeviation: true,
     testReadingCount: 2,
-    implemented: false,
+    implemented: true,
   },
   [CertificateType.METERING_PUMP_CHAMBER]: {
     route: "metering-pump-chamber",
@@ -139,7 +141,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     measuredQuantity: "mass",
     showDeviation: true,
     testReadingCount: 2,
-    implemented: false,
+    implemented: true,
   },
   [CertificateType.METERING_PUMP_TUNNEL]: {
     route: "metering-pump-tunnel",
@@ -150,7 +152,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     measuredQuantity: "mass",
     showDeviation: true,
     testReadingCount: 2,
-    implemented: false,
+    implemented: true,
   },
   [CertificateType.EXHAUST]: {
     route: "exhaust",
@@ -160,7 +162,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     pointKinds: [],
     measuredQuantity: "air flow",
     showDeviation: false,
-    implemented: false,
+    implemented: true,
+    alwaysRequired: true,
   },
   [CertificateType.VACUUM_PRESSURE]: {
     route: "vacuum-pressure",
@@ -267,7 +270,7 @@ export function certificateHref(reportId: string, type: CertificateType): string
 
 /**
  * Siguiente paso del wizard tras guardar un certificado.
- * Al terminar el último implementado, vuelve al detalle del reporte.
+ * Al terminar el último implementado, sigue a la revisión y firma del reporte.
  */
 export function getNextCertificateHref(params: {
   reportId: string;
@@ -276,7 +279,9 @@ export function getNextCertificateHref(params: {
   const index = implementedCertificateTypes.indexOf(params.certificateType);
   const next = index >= 0 ? implementedCertificateTypes[index + 1] : undefined;
 
-  return next ? certificateHref(params.reportId, next) : `/reports/${params.reportId}`;
+  return next
+    ? certificateHref(params.reportId, next)
+    : `/reports/${params.reportId}/wizard/review`;
 }
 
 /**

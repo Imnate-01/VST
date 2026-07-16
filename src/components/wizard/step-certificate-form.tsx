@@ -197,6 +197,8 @@ function SectionRow({ children }: { children: string }) {
  */
 function PassBlock({
   title,
+  readingLabel,
+  deviationLabel,
   base,
   referenceField,
   readingField,
@@ -207,6 +209,8 @@ function PassBlock({
   register,
 }: {
   title: string;
+  readingLabel: string;
+  deviationLabel: string;
   base: string;
   referenceField: string;
   readingField: string;
@@ -230,7 +234,7 @@ function PassBlock({
         </td>
       </tr>
       <tr className="border-b border-sig-100">
-        <LabelCell>{t("measurement.uutReading", { stage: title })}</LabelCell>
+        <LabelCell>{readingLabel}</LabelCell>
         <td className="p-0">
           <InputCell
             registration={register(`${base}.${readingField}` as never)}
@@ -253,7 +257,7 @@ function PassBlock({
         </td>
       </tr>
       <tr className="border-b border-sig-100">
-        <LabelCell>{t("measurement.deviation", { stage: title })}</LabelCell>
+        <LabelCell>{deviationLabel}</LabelCell>
         <td className="p-0">
           <DisplayCell
             value={evaluated.deviation ? `${evaluated.deviation} ${unit}` : ""}
@@ -352,6 +356,8 @@ function PointTable({
 
           <PassBlock
             title={t("measurement.asFound")}
+            readingLabel={t("measurement.readingAsFound")}
+            deviationLabel={t("measurement.deviationAsFound")}
             base={base}
             referenceField="asFoundReference"
             readingField="asFoundReading"
@@ -364,6 +370,8 @@ function PointTable({
 
           <PassBlock
             title={t("measurement.asLeft")}
+            readingLabel={t("measurement.readingAsLeft")}
+            deviationLabel={t("measurement.deviationAsLeft")}
             base={base}
             referenceField="asLeftReference"
             readingField="asLeftReading"
@@ -551,6 +559,30 @@ export function StepCertificateForm({
               );
             })}
           </div>
+
+          <section className="rounded-xl border bg-white p-5">
+            <label
+              htmlFor="certificate-notes"
+              className="text-sm font-semibold text-foreground"
+            >
+              {t("certificate.observations")}
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("certificate.observationsDescription")}
+            </p>
+            <textarea
+              id="certificate-notes"
+              rows={4}
+              placeholder={t("certificate.observationsPlaceholder")}
+              className="mt-3 w-full rounded-lg border border-input bg-muted/70 px-3 py-2 text-sm outline-none ring-inset transition-colors placeholder:text-muted-foreground hover:bg-muted focus:bg-white focus:ring-2 focus:ring-primary"
+              {...form.register("notes")}
+            />
+            {form.formState.errors.notes && (
+              <p className="mt-2 text-xs text-destructive">
+                {form.formState.errors.notes.message}
+              </p>
+            )}
+          </section>
 
           <p className="text-xs text-muted-foreground">
             {t("measurement.help")}

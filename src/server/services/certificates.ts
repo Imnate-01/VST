@@ -1,9 +1,11 @@
 import {
+  CertificateLayout,
   CertificateStatus,
   CertificateType,
   MeasurementStatus,
   PointKind,
   ReportStatus,
+  type Prisma,
   type UserRole,
 } from "@prisma/client";
 import { Decimal } from "decimal.js";
@@ -12,9 +14,14 @@ import {
   IndeterminateToleranceError,
   aggregateCertificateStatus as aggregateOverallStatus,
   evaluatePointSet,
+  evaluateTestReadings,
   type MeasurementOverall,
 } from "@/server/domain/calibration";
-import { hasCompleteCertificateMeasurement } from "@/server/domain/certificate-completeness";
+import {
+  hasCompleteCertificateMeasurement,
+  hasCompleteTestReadings,
+  hasCompleteVerificationRows,
+} from "@/server/domain/certificate-completeness";
 import { getCertificateConfig, isPointLayout } from "@/lib/certificates";
 import { logAudit } from "@/server/services/audit";
 import { revokeCertificateSignatures } from "@/server/services/signatures";
@@ -22,7 +29,8 @@ import type {
   CertificateMeasurementRowInput,
   MeasurementPointInput,
   UpsertMeasurementInput,
-  UpdateCertificateNotesInput,
+  UpsertTestReadingsInput,
+  UpsertVerificationInput,
 } from "@/lib/validations/measurements";
 
 type Actor = {
@@ -65,7 +73,7 @@ export async function getCertificateForWizard(
   const [certificate, deviceSelections] = await Promise.all([
     prisma.certificate.findUnique({
       where: { reportId_certificateType: { reportId, certificateType } },
-      include: { primaryStandard: true },
+      include: { primaryStandard: true, verificationRows: true },
     }),
     prisma.reportDeviceSelection.findMany({
       where: {
@@ -86,7 +94,7 @@ export async function getCertificateForWizard(
       certificateId: certificate.id,
       deviceSelectionId: { in: deviceSelections.map((selection) => selection.id) },
     },
-    include: { points: true },
+    include: { points: true, readings: true },
   });
 
   return { report, certificate, deviceSelections, measurements };
@@ -351,6 +359,26 @@ export async function upsertCertificateMeasurement(
     );
   }
 
+  const notes = input.notes?.trim() || null;
+  if (notes !== certificate.notes) {
+    const revoked = await prisma.$transaction(async (tx) => {
+      await tx.certificate.update({ where: { id: certificate.id }, data: { notes } });
+
+      // Las observaciones se imprimen en la página firmada y entran al payload
+      // de la firma: cambiarlas invalida la validación del preparador igual que
+      // cambiar una medición.
+      return revokeCertificateSignatures(tx, certificate.id);
+    });
+
+    await logAudit({
+      entityType: "Certificate",
+      entityId: certificate.id,
+      action: "update_notes",
+      userId: actor.id,
+      changes: { notes, revokedSignatures: revoked },
+    });
+  }
+
   const allowedKinds = new Set<PointKind>(config.pointKinds);
   for (const measurement of input.measurements) {
     for (const point of measurement.points) {
@@ -459,35 +487,283 @@ export async function upsertCertificateMeasurement(
   return recalculateCertificateStatus(certificate.id, actor.id);
 }
 
-export async function updateCertificateNotes(
+type StoredTestParams = {
+  meteringRate?: string;
+  durationMinutes?: string;
+  targetWeight?: string;
+  material: string;
+};
+
+function normalizeTestParams(
+  input: UpsertTestReadingsInput["params"]
+): StoredTestParams {
+  return {
+    ...(input.meteringRate ? { meteringRate: input.meteringRate } : {}),
+    ...(input.durationMinutes ? { durationMinutes: input.durationMinutes } : {}),
+    ...(input.targetWeight ? { targetWeight: input.targetWeight } : {}),
+    material: input.material?.trim() || "Minimum 34% Hydrogen Peroxide",
+  };
+}
+
+function testTarget(
+  certificateType: CertificateType,
+  params: StoredTestParams
+): Decimal | null {
+  if (certificateType === CertificateType.ULTRASONIC) {
+    if (!params.targetWeight) return null;
+    const target = new Decimal(params.targetWeight);
+    return target.gt(0) ? target : null;
+  }
+
+  if (!params.meteringRate || !params.durationMinutes) return null;
+  const target = new Decimal(params.meteringRate).times(
+    params.durationMinutes
+  );
+  return target.gt(0) ? target : null;
+}
+
+export async function upsertCertificateTestReadings(
   actor: Actor,
-  input: UpdateCertificateNotesInput
+  input: UpsertTestReadingsInput
 ) {
   const report = await getEditableReport(input.reportId, actor);
   if (!report) {
     throw new Error("Reporte no encontrado o no editable.");
   }
 
-  const existing = await prisma.certificate.findFirst({
-    where: { id: input.certificateId, reportId: report.id },
+  const certificate = await prisma.certificate.findFirst({
+    where: {
+      id: input.certificateId,
+      reportId: report.id,
+      certificateType: input.certificateType,
+      layout: CertificateLayout.TEST_READINGS,
+    },
   });
-
-  if (!existing) {
-    throw new Error("Certificado inválido para este reporte.");
+  if (!certificate) {
+    throw new Error("Certificado no encontrado para este reporte.");
   }
 
-  const certificate = await prisma.certificate.update({
-    where: { id: existing.id },
-    data: { notes: input.notes?.trim() || null },
+  const config = getCertificateConfig(certificate.certificateType);
+  const expectedCount = config.testReadingCount ?? 2;
+  const params = normalizeTestParams(input.params);
+  const target = testTarget(certificate.certificateType, params);
+
+  const selections = await prisma.reportDeviceSelection.findMany({
+    where: {
+      reportId: report.id,
+      included: true,
+      certificateTypesSnapshot: { has: input.certificateType },
+      id: {
+        in: input.measurements.map(
+          (measurement) => measurement.deviceSelectionId
+        ),
+      },
+    },
+  });
+  const selectionById = new Map(
+    selections.map((selection) => [selection.id, selection])
+  );
+
+  if (selections.length !== input.measurements.length) {
+    throw new Error("Una medición no pertenece a este reporte o certificado.");
+  }
+
+  const calculated = input.measurements.map((measurementInput) => {
+    const selection = selectionById.get(measurementInput.deviceSelectionId);
+    if (!selection) {
+      throw new Error("Dispositivo inválido para este certificado.");
+    }
+
+    const readings = [...measurementInput.readings].sort(
+      (a, b) => a.sequence - b.sequence
+    );
+    const expectedSequences = Array.from(
+      { length: expectedCount },
+      (_, index) => index + 1
+    );
+    if (
+      readings.length !== expectedCount ||
+      readings.some(
+        (reading, index) => reading.sequence !== expectedSequences[index]
+      )
+    ) {
+      throw new Error(
+        `El certificado ${config.label} requiere ${expectedCount} corridas.`
+      );
+    }
+
+    const evaluated = target
+      ? evaluateTestReadings({
+          target,
+          readings: readings.map((reading) => reading.value),
+          toleranceValue: selection.toleranceValueSnapshot.toString(),
+          toleranceIsPercent: selection.toleranceIsPercentSnapshot,
+        })
+      : null;
+    const complete = hasCompleteTestReadings(
+      expectedCount,
+      readings.map((reading) => ({
+        value: reading.value,
+        target: target?.toString(),
+      }))
+    );
+    const failed = complete && evaluated?.overall === "fail";
+
+    return {
+      selection,
+      status: !complete
+        ? MeasurementStatus.PENDING
+        : failed
+          ? MeasurementStatus.FAIL
+          : MeasurementStatus.PASS,
+      statusReason: !target
+        ? "Falta el objetivo de la prueba"
+        : !complete
+          ? "Completa todas las corridas antes de firmar"
+          : failed
+            ? "Una o más corridas están fuera de tolerancia"
+            : null,
+      readings: readings.map((reading, index) => ({
+        sequence: reading.sequence,
+        value: reading.value || null,
+        target: target?.toString() ?? null,
+        deviation:
+          evaluated?.readings[index]?.deviation?.toString() ?? null,
+        inTolerance:
+          evaluated?.readings[index]?.inTolerance ?? null,
+      })),
+    };
+  });
+
+  const notes = input.notes?.trim() || null;
+  const revoked = await prisma.$transaction(async (tx) => {
+    await tx.certificate.update({
+      where: { id: certificate.id },
+      data: {
+        notes,
+        params: params as Prisma.InputJsonObject,
+      },
+    });
+
+    for (const result of calculated) {
+      const measurement = await tx.certificateMeasurement.upsert({
+        where: {
+          certificateId_deviceSelectionId: {
+            certificateId: certificate.id,
+            deviceSelectionId: result.selection.id,
+          },
+        },
+        update: {
+          status: result.status,
+          statusReason: result.statusReason,
+          requiredAdjustment: false,
+          correctionMethod: null,
+        },
+        create: {
+          certificateId: certificate.id,
+          deviceSelectionId: result.selection.id,
+          status: result.status,
+          statusReason: result.statusReason,
+          requiredAdjustment: false,
+        },
+      });
+
+      await tx.measurementPoint.deleteMany({
+        where: { measurementId: measurement.id },
+      });
+      await tx.testReading.deleteMany({
+        where: { measurementId: measurement.id },
+      });
+      await tx.testReading.createMany({
+        data: result.readings.map((reading) => ({
+          measurementId: measurement.id,
+          ...reading,
+        })),
+      });
+    }
+
+    return revokeCertificateSignatures(tx, certificate.id);
   });
 
   await logAudit({
     entityType: "Certificate",
     entityId: certificate.id,
-    action: "update_notes",
+    action: "upsert_test_readings",
     userId: actor.id,
-    changes: { notes: input.notes?.trim() || null },
+    changes: {
+      params,
+      measurementCount: calculated.length,
+      revokedSignatures: revoked,
+    },
   });
 
-  return certificate;
+  return recalculateCertificateStatus(certificate.id, actor.id);
+}
+
+export async function upsertCertificateVerification(
+  actor: Actor,
+  input: UpsertVerificationInput
+) {
+  const report = await getEditableReport(input.reportId, actor);
+  if (!report) {
+    throw new Error("Reporte no encontrado o no editable.");
+  }
+
+  const certificate = await prisma.certificate.findFirst({
+    where: {
+      id: input.certificateId,
+      reportId: report.id,
+      certificateType: CertificateType.EXHAUST,
+      layout: CertificateLayout.VERIFICATION,
+    },
+  });
+  if (!certificate) {
+    throw new Error("Certificado no encontrado para este reporte.");
+  }
+
+  const notes = input.notes?.trim() || null;
+  const complete = hasCompleteVerificationRows(input.rows);
+  const nextStatus = complete
+    ? CertificateStatus.PASS
+    : CertificateStatus.PENDING;
+
+  const revoked = await prisma.$transaction(async (tx) => {
+    await tx.verificationRow.deleteMany({
+      where: { certificateId: certificate.id },
+    });
+    await tx.verificationRow.createMany({
+      data: input.rows.map((row) => ({
+        certificateId: certificate.id,
+        motorTag: row.motorTag,
+        description: row.description,
+        rowLabel: row.rowLabel,
+        scfm: row.scfm || null,
+        driveFrequencyHz: row.notApplicable
+          ? null
+          : row.driveFrequencyHz || null,
+        notApplicable: row.notApplicable,
+        displayOrder: row.displayOrder,
+      })),
+    });
+    await tx.certificate.update({
+      where: { id: certificate.id },
+      data: { notes, overallStatus: nextStatus },
+    });
+
+    return revokeCertificateSignatures(tx, certificate.id);
+  });
+
+  await logAudit({
+    entityType: "Certificate",
+    entityId: certificate.id,
+    action: "upsert_verification",
+    userId: actor.id,
+    changes: {
+      rowCount: input.rows.length,
+      overallStatus: nextStatus,
+      revokedSignatures: revoked,
+    },
+  });
+
+  return nextStatus;
 }

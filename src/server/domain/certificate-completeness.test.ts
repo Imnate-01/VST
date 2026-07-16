@@ -1,6 +1,10 @@
 import { CertificateType, PointKind } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { hasCompleteCertificateMeasurement } from "./certificate-completeness";
+import {
+  hasCompleteCertificateMeasurement,
+  hasCompleteTestReadings,
+  hasCompleteVerificationRows,
+} from "./certificate-completeness";
 
 const completePoint = {
   kind: PointKind.LOW,
@@ -62,6 +66,43 @@ describe("hasCompleteCertificateMeasurement", () => {
         CertificateType.CHAMBER_VST_AIR_FLOW,
         [{ ...lowPoint, conditionValue: "" }, highPoint]
       )
+    ).toBe(false);
+  });
+});
+
+describe("hasCompleteTestReadings", () => {
+  it("requiere objetivo y las dos corridas de la plantilla", () => {
+    expect(
+      hasCompleteTestReadings(2, [
+        { target: "37.5", value: "38" },
+        { target: "37.5", value: "39" },
+      ])
+    ).toBe(true);
+    expect(
+      hasCompleteTestReadings(2, [
+        { target: "37.5", value: "38" },
+        { target: "37.5", value: "" },
+      ])
+    ).toBe(false);
+  });
+});
+
+describe("hasCompleteVerificationRows", () => {
+  it("permite N/A solo para la frecuencia del variador", () => {
+    expect(
+      hasCompleteVerificationRows([
+        { scfm: "205", driveFrequencyHz: null, notApplicable: true },
+      ])
+    ).toBe(true);
+    expect(
+      hasCompleteVerificationRows([
+        { scfm: "", driveFrequencyHz: null, notApplicable: true },
+      ])
+    ).toBe(false);
+    expect(
+      hasCompleteVerificationRows([
+        { scfm: "205", driveFrequencyHz: "", notApplicable: false },
+      ])
     ).toBe(false);
   });
 });

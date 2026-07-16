@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { requireAuth } from "@/server/auth";
 import {
-  updateCertificateNotes as updateCertificateNotesService,
   upsertCertificateMeasurement,
+  upsertCertificateTestReadings,
+  upsertCertificateVerification,
 } from "@/server/services/certificates";
 import {
-  getUpdateCertificateNotesSchema,
   getUpsertMeasurementSchema,
+  getUpsertTestReadingsSchema,
+  getUpsertVerificationSchema,
 } from "@/lib/validations/measurements";
 import { certificateHref } from "@/lib/certificates";
 import { getLocale } from "@/lib/i18n-server";
@@ -44,24 +46,59 @@ export async function upsertMeasurement(input: unknown) {
   }
 }
 
-export async function updateCertificateNotes(input: unknown) {
+export async function upsertTestReadings(input: unknown) {
   const locale = await getLocale();
-  const parsed = getUpdateCertificateNotesSchema(locale).safeParse(input);
+  const parsed = getUpsertTestReadingsSchema(locale).safeParse(input);
   if (!parsed.success) {
-    return { ok: false, message: parsed.error.errors[0]?.message ?? translate(locale, "common.invalidData") };
+    return {
+      ok: false,
+      message:
+        parsed.error.errors[0]?.message ??
+        translate(locale, "common.invalidData"),
+    };
   }
 
   try {
     const session = await requireAuth();
-    await updateCertificateNotesService(
+    const certificateStatus = await upsertCertificateTestReadings(
       { id: session.user.id, role: session.user.role },
       parsed.data
     );
     revalidatePath("/reports");
-    return { ok: true };
+    revalidatePath(
+      certificateHref(parsed.data.reportId, parsed.data.certificateType)
+    );
+    return { ok: true, certificateStatus };
   } catch (error) {
-    // requireAuth redirige a /login si la sesión ya no es válida; ese "error"
-    // es control de flujo de Next y no debe convertirse en un mensaje.
+    unstable_rethrow(error);
+    return { ok: false, message: getErrorMessage(error, locale) };
+  }
+}
+
+export async function upsertVerification(input: unknown) {
+  const locale = await getLocale();
+  const parsed = getUpsertVerificationSchema(locale).safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message:
+        parsed.error.errors[0]?.message ??
+        translate(locale, "common.invalidData"),
+    };
+  }
+
+  try {
+    const session = await requireAuth();
+    const certificateStatus = await upsertCertificateVerification(
+      { id: session.user.id, role: session.user.role },
+      parsed.data
+    );
+    revalidatePath("/reports");
+    revalidatePath(
+      certificateHref(parsed.data.reportId, parsed.data.certificateType)
+    );
+    return { ok: true, certificateStatus };
+  } catch (error) {
     unstable_rethrow(error);
     return { ok: false, message: getErrorMessage(error, locale) };
   }

@@ -56,11 +56,20 @@ export default async function ReportDetailPage({ params }: Props) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link href={`/reports/${report.id}/pdf`} target="_blank" prefetch={false}>
-              {t("reports.viewPdf")}
-            </Link>
-          </Button>
+          {/* Enviado: el PDF archivado es el documento oficial, no una vista previa. */}
+          {report.pdfUrl ? (
+            <Button asChild variant="outline">
+              <Link href={report.pdfUrl} target="_blank" prefetch={false}>
+                {t("review.viewFinalPdf")}
+              </Link>
+            </Button>
+          ) : (
+            <Button asChild variant="outline">
+              <Link href={`/reports/${report.id}/pdf`} target="_blank" prefetch={false}>
+                {t("reports.viewPdf")}
+              </Link>
+            </Button>
+          )}
           {report.status === "DRAFT" && (
             <Button asChild>
               <Link href={`/reports/${report.id}/wizard/info`}>

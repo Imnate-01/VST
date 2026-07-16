@@ -100,7 +100,12 @@ export async function updateReportStandards(input: unknown) {
 
   revalidatePath("/reports");
 
-  const firstCertificate = implementedCertificateTypes[0];
+  const selectedTypes = new Set(
+    parsed.data.standards.map((standard) => standard.certificateType)
+  );
+  const firstCertificate = implementedCertificateTypes.find((type) =>
+    selectedTypes.has(type)
+  );
   redirect(
     firstCertificate
       ? certificateHref(parsed.data.reportId, firstCertificate)

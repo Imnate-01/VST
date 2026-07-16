@@ -8,9 +8,15 @@ import {
   StepCertificateForm,
   type MeasurementRow,
 } from "@/components/wizard/step-certificate-form";
+import { StepTestReadingsForm } from "@/components/wizard/step-test-readings-form";
+import { StepVerificationForm } from "@/components/wizard/step-verification-form";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/components/language-provider";
-import type { UpsertMeasurementInput } from "@/lib/validations/measurements";
+import type {
+  UpsertMeasurementInput,
+  UpsertTestReadingsInput,
+  UpsertVerificationInput,
+} from "@/lib/validations/measurements";
 
 type CertificateStatus = "PENDING" | "PASS" | "FAIL" | "MIXED";
 
@@ -21,24 +27,40 @@ type ExistingSignature = {
   signerTitle: string;
 };
 
-type Props = {
+type CommonProps = {
   title: string;
   description: string;
   reportId: string;
   certificateId: string;
   certificateType: CertificateType;
-  rows: MeasurementRow[];
-  initialValues: UpsertMeasurementInput;
   initialReadyToSign: boolean;
   signature: ExistingSignature | null;
   nextHref: string;
 };
 
+type Props = CommonProps &
+  (
+    | {
+        mode: "POINTS";
+        rows: MeasurementRow[];
+        initialValues: UpsertMeasurementInput;
+      }
+    | {
+        mode: "TEST_READINGS";
+        rows: MeasurementRow[];
+        initialValues: UpsertTestReadingsInput;
+      }
+    | {
+        mode: "VERIFICATION";
+        initialValues: UpsertVerificationInput;
+      }
+  );
+
 export function CertificateStep({
   initialReadyToSign,
   signature,
   nextHref,
-  ...formProps
+  ...props
 }: Props) {
   const { t } = useLanguage();
   const [dirty, setDirty] = useState(false);
@@ -60,23 +82,29 @@ export function CertificateStep({
     : readyToSign
       ? null
       : t("certificate.completeBeforeSign");
+  const formCallbacks = {
+    onDirtyChange: setDirty,
+    onSaved: (status: CertificateStatus) => {
+      setDirty(false);
+      setReadyToSign(status !== "PENDING");
+      setSignatureInvalidated(true);
+    },
+  };
 
   return (
     <div className="space-y-6">
-      <StepCertificateForm
-        {...formProps}
-        onDirtyChange={setDirty}
-        onSaved={(status: CertificateStatus) => {
-          setDirty(false);
-          setReadyToSign(status !== "PENDING");
-          setSignatureInvalidated(true);
-        }}
-      />
+      {props.mode === "POINTS" ? (
+        <StepCertificateForm {...props} {...formCallbacks} />
+      ) : props.mode === "TEST_READINGS" ? (
+        <StepTestReadingsForm {...props} {...formCallbacks} />
+      ) : (
+        <StepVerificationForm {...props} {...formCallbacks} />
+      )}
 
       <div id="certificate-signature" className="space-y-4 scroll-mt-24">
         <CertificateSignatureBlock
-          reportId={formProps.reportId}
-          certificateId={formProps.certificateId}
+          reportId={props.reportId}
+          certificateId={props.certificateId}
           existing={activeSignature}
           blockedReason={blockedReason}
         />

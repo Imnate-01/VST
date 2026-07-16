@@ -39,8 +39,8 @@ describe("filas de identidad del certificado", () => {
     expect(rowProps("Target reference \\(nominal\\)")).not.toContain("identity");
   });
 
-  it("UUT reading NO es una fila de identidad", () => {
-    expect(rowProps("UUT reading \\(As Found\\)")).not.toContain("identity");
+  it("Reading NO es una fila de identidad", () => {
+    expect(rowProps("Reading \\(As Found\\)")).not.toContain("identity");
   });
 
   it("identity controla el contenido y strong el estilo", () => {

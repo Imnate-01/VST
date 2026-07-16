@@ -1,4 +1,5 @@
 import {
+  CertificateLayout,
   CertificateStatus,
   ReportStatus,
   SignerRole,
@@ -12,7 +13,12 @@ import {
   type CertificateSignaturePayload,
   type ReportSignaturePayload,
 } from "@/server/domain/signature-payload";
-import { hasCompleteCertificateMeasurement } from "@/server/domain/certificate-completeness";
+import {
+  hasCompleteCertificateMeasurement,
+  hasCompleteTestReadings,
+  hasCompleteVerificationRows,
+} from "@/server/domain/certificate-completeness";
+import { getCertificateConfig } from "@/lib/certificates";
 import { storeSignatureImage } from "@/server/services/signature-storage";
 import { logAudit } from "@/server/services/audit";
 
@@ -76,8 +82,10 @@ async function buildCertificatePayload(
         include: {
           deviceSelection: { select: { tagNumberSnapshot: true } },
           points: true,
+          readings: true,
         },
       },
+      verificationRows: true,
     },
   });
 
@@ -91,6 +99,8 @@ async function buildCertificatePayload(
     certificateType: certificate.certificateType,
     overallStatus: certificate.overallStatus,
     standardSerial: certificate.primaryStandard.serialSnapshot,
+    notes: certificate.notes,
+    params: certificate.params,
     measurements: certificate.measurements.map((measurement) => ({
       tagNumber: measurement.deviceSelection.tagNumberSnapshot,
       status: measurement.status,
@@ -104,6 +114,20 @@ async function buildCertificatePayload(
         asLeftReference: decimalToString(point.asLeftReference),
         asLeftReading: decimalToString(point.asLeftReading),
       })),
+      readings: measurement.readings.map((reading) => ({
+        sequence: reading.sequence,
+        value: decimalToString(reading.value),
+        target: decimalToString(reading.target),
+      })),
+    })),
+    verificationRows: certificate.verificationRows.map((row) => ({
+      motorTag: row.motorTag,
+      description: row.description,
+      rowLabel: row.rowLabel,
+      scfm: decimalToString(row.scfm),
+      driveFrequencyHz: decimalToString(row.driveFrequencyHz),
+      notApplicable: row.notApplicable,
+      displayOrder: row.displayOrder,
     })),
   };
 }
@@ -136,7 +160,10 @@ export async function signCertificate(
 
   const certificate = await prisma.certificate.findFirst({
     where: { id: input.certificateId, reportId: report.id },
-    include: { measurements: { include: { points: true } } },
+    include: {
+      measurements: { include: { points: true, readings: true } },
+      verificationRows: true,
+    },
   });
 
   if (!certificate) {
@@ -157,12 +184,23 @@ export async function signCertificate(
   const relevantMeasurements = certificate.measurements.filter((measurement) =>
     expectedSelectionIds.has(measurement.deviceSelectionId)
   );
+  const config = getCertificateConfig(certificate.certificateType);
   const measurementsComplete =
-    relevantMeasurements.length === expectedSelections.length &&
-    expectedSelections.length > 0 &&
-    relevantMeasurements.every((measurement) =>
-      hasCompleteCertificateMeasurement(certificate.certificateType, measurement.points)
-    );
+    certificate.layout === CertificateLayout.VERIFICATION
+      ? hasCompleteVerificationRows(certificate.verificationRows)
+      : relevantMeasurements.length === expectedSelections.length &&
+        expectedSelections.length > 0 &&
+        relevantMeasurements.every((measurement) =>
+          certificate.layout === CertificateLayout.TEST_READINGS
+            ? hasCompleteTestReadings(
+                config.testReadingCount ?? 2,
+                measurement.readings
+              )
+            : hasCompleteCertificateMeasurement(
+                certificate.certificateType,
+                measurement.points
+              )
+        );
 
   if (
     !measurementsComplete ||

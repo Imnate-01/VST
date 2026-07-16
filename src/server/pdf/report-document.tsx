@@ -1,8 +1,25 @@
 import React from "react";
-import { Document, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
-import { PointKind } from "@prisma/client";
+import {
+  Circle,
+  Document,
+  Image,
+  Page,
+  Path,
+  StyleSheet,
+  Svg,
+  Text,
+  View,
+} from "@react-pdf/renderer";
+import { CertificateLayout, PointKind } from "@prisma/client";
 import { SigLogo } from "./sig-logo";
 import type { PdfCertificate, PdfDeviceColumn, PdfReport, PdfSignature } from "./report-data";
+import {
+  certificateOutcome,
+  countChannels,
+  evaluatedColumns,
+  reportOutcome,
+  type Outcome,
+} from "@/server/domain/report-outcome";
 import {
   createTranslator,
   DEFAULT_LOCALE,
@@ -25,12 +42,39 @@ const SAND_3 = "#BFBAB5";
 const SAND_4 = "#73706D";
 const WHITE = "#FFFFFF";
 
+const TABLE_HEAD = "#F7F5F2";
+const ZEBRA = "#FBFAF8";
+
 const PASS = "#1F7A4D";
-const PASS_BG = "#EDF7F1";
+const PASS_BG = "#F1F7F3";
+const PASS_BORDER = "#BEDCC9";
 const FAIL = "#B42318";
-const FAIL_BG = "#FCEEEE";
+const FAIL_BG = "#FBF0EF";
+const FAIL_BORDER = "#EDC4BF";
 const NEUTRAL = SAND_4;
 const NEUTRAL_BG = SAND_1;
+
+/**
+ * Verde solo cuando todo se evaluó y pasó. Un reporte a medias se pinta neutro,
+ * nunca como aprobado.
+ */
+const OUTCOME_TONE: Record<Outcome, { color: string; bg: string; border: string }> = {
+  pass: { color: PASS, bg: PASS_BG, border: PASS_BORDER },
+  deviation: { color: FAIL, bg: FAIL_BG, border: FAIL_BORDER },
+  incomplete: { color: NEUTRAL, bg: NEUTRAL_BG, border: SAND_3 },
+};
+
+const outcomeLabelKeys: Record<Outcome, MessageKey> = {
+  pass: "pdf.calibrationComplete",
+  deviation: "pdf.deviationRecorded",
+  incomplete: "pdf.calibrationIncomplete",
+};
+
+const outcomeBodyKeys: Record<Outcome, MessageKey> = {
+  pass: "pdf.overallComplete",
+  deviation: "pdf.overallDeviation",
+  incomplete: "pdf.overallIncomplete",
+};
 
 const styles = StyleSheet.create({
   page: {
@@ -46,10 +90,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 10,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: SAND_2,
-    marginBottom: 18,
+    marginBottom: 10,
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 9 },
   logoBox: {
@@ -88,7 +132,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 16,
   },
-  docTitle: { fontSize: 20, fontFamily: "Helvetica-Bold", color: BLACK },
+  docTitle: { fontSize: 18, fontFamily: "Helvetica-Bold", color: BLACK },
   docLead: {
     maxWidth: 440,
     fontSize: 7.5,
@@ -103,7 +147,7 @@ const styles = StyleSheet.create({
     lineHeight: 1.5,
     color: SAND_4,
     marginTop: 4,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   coverEyebrow: {
     marginBottom: 6,
@@ -113,20 +157,20 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   coverSubtitle: {
-    marginTop: 4,
-    marginBottom: 15,
+    marginTop: 2,
+    marginBottom: 9,
     fontSize: 8,
     color: SAND_4,
   },
   sectionTitle: {
-    marginTop: 13,
-    marginBottom: 7,
+    marginTop: 9,
+    marginBottom: 5,
     fontSize: 10,
     fontFamily: "Helvetica-Bold",
     color: BLACK,
   },
   sectionBar: {
-    backgroundColor: SAND_1,
+    backgroundColor: TABLE_HEAD,
     paddingVertical: 5,
     paddingHorizontal: 9,
     borderWidth: 1,
@@ -151,22 +195,22 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: SAND_2 },
   rowLast: { flexDirection: "row" },
-  rowZebra: { backgroundColor: "#FBFAF9" },
+  rowZebra: { backgroundColor: ZEBRA },
   labelCell: {
     width: 118,
-    paddingVertical: 4,
+    paddingVertical: 3,
     paddingHorizontal: 6,
     borderRightWidth: 1,
     borderRightColor: SAND_2,
-    backgroundColor: SAND_1,
+    backgroundColor: TABLE_HEAD,
     fontFamily: "Helvetica-Bold",
     fontSize: 6.8,
     color: BLACK,
   },
-  valueCell: { flex: 1, paddingVertical: 4, paddingHorizontal: 6, fontSize: 7.5 },
+  valueCell: { flex: 1, paddingVertical: 3, paddingHorizontal: 6, fontSize: 7.5 },
   dataCell: {
     flex: 1,
-    paddingVertical: 4,
+    paddingVertical: 3,
     paddingHorizontal: 4,
     borderRightWidth: 1,
     borderRightColor: SAND_2,
@@ -176,7 +220,7 @@ const styles = StyleSheet.create({
   },
   dataCellLast: {
     flex: 1,
-    paddingVertical: 4,
+    paddingVertical: 3,
     paddingHorizontal: 4,
     textAlign: "center",
     fontFamily: "Courier",
@@ -211,24 +255,25 @@ const styles = StyleSheet.create({
   excluded: { color: SAND_3 },
   identity: { fontFamily: "Courier-Bold", color: BLACK },
   twoCol: { flexDirection: "row", gap: 14, marginTop: 14 },
+  threeCol: { flexDirection: "row", gap: 12, marginTop: 8 },
   col: { flex: 1 },
   signatureBox: {
     borderWidth: 1,
     borderColor: SAND_2,
     borderRadius: 5,
-    backgroundColor: WHITE,
-    height: 54,
+    backgroundColor: ZEBRA,
+    height: 38,
     padding: 3,
     justifyContent: "center",
   },
-  signatureImage: { height: 46, objectFit: "contain" },
+  signatureImage: { height: 30, objectFit: "contain" },
   caption: { fontSize: 6.3, color: SAND_4, marginTop: 3 },
   unsigned: { fontSize: 7, color: SAND_3, textAlign: "center" },
   observations: {
     borderWidth: 1,
     borderColor: SAND_2,
     borderRadius: 5,
-    minHeight: 54,
+    minHeight: 44,
     padding: 6,
     fontSize: 7.5,
     lineHeight: 1.4,
@@ -243,14 +288,27 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     alignSelf: "flex-start",
-    paddingVertical: 3,
+    paddingVertical: 3.5,
     paddingHorizontal: 8,
+    borderWidth: 1,
     borderRadius: 5,
-    fontSize: 6.5,
-    fontFamily: "Courier-Bold",
-    letterSpacing: 0.3,
   },
+  chipText: { fontSize: 6.8, fontFamily: "Helvetica-Bold", letterSpacing: 0.2 },
+  chipLarge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    paddingVertical: 5.5,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 6,
+  },
+  chipLargeText: { fontSize: 8.5, fontFamily: "Helvetica-Bold", letterSpacing: 0.2 },
   summaryCard: {
     borderWidth: 1,
     borderColor: SAND_2,
@@ -266,8 +324,8 @@ const styles = StyleSheet.create({
   summaryRowLast: { flexDirection: "row" },
   summaryCell: {
     flex: 1,
-    minHeight: 48,
-    paddingVertical: 9,
+    minHeight: 34,
+    paddingVertical: 5,
     paddingHorizontal: 10,
   },
   summaryCellBorder: {
@@ -294,36 +352,39 @@ const styles = StyleSheet.create({
   resultGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 5,
   },
   resultCard: {
-    width: "31.9%",
-    minHeight: 58,
+    width: "23.7%",
+    minHeight: 32,
     borderWidth: 1,
     borderRadius: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 7,
   },
   resultName: {
-    fontSize: 6.8,
+    fontSize: 6.1,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 5,
+    marginBottom: 3,
   },
   resultCount: {
-    fontSize: 13,
+    fontSize: 9.5,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   resultMeta: { fontSize: 6.5, color: SAND_4 },
   alert: {
-    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 7,
+    marginTop: 8,
     borderWidth: 1,
     borderRadius: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    fontSize: 7,
-    lineHeight: 1.45,
+    paddingVertical: 6,
+    paddingHorizontal: 9,
   },
+  alertIcon: { marginTop: 0.5 },
+  alertBody: { flex: 1, fontSize: 7.2, lineHeight: 1.5, color: BLACK },
   alertTitle: { fontFamily: "Helvetica-Bold" },
   traceTable: {
     borderWidth: 1,
@@ -331,7 +392,7 @@ const styles = StyleSheet.create({
   },
   traceHeader: {
     flexDirection: "row",
-    backgroundColor: SAND_1,
+    backgroundColor: TABLE_HEAD,
     borderBottomWidth: 1,
     borderBottomColor: SAND_2,
   },
@@ -342,7 +403,7 @@ const styles = StyleSheet.create({
   },
   traceRowLast: { flexDirection: "row" },
   traceHeadCell: {
-    paddingVertical: 5,
+    paddingVertical: 3,
     paddingHorizontal: 7,
     fontSize: 5.8,
     fontFamily: "Courier-Bold",
@@ -351,22 +412,96 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   traceCell: {
-    paddingVertical: 5,
+    paddingVertical: 3,
     paddingHorizontal: 7,
     fontSize: 6.7,
   },
   traceTechnical: { fontFamily: "Courier", fontSize: 6.4 },
+  certObservations: { marginTop: 9 },
+  certObservationsBox: {
+    borderWidth: 1,
+    borderColor: SAND_2,
+    borderRadius: 5,
+    minHeight: 30,
+    padding: 6,
+    fontSize: 7.5,
+    lineHeight: 1.4,
+    backgroundColor: SAND_1,
+  },
+  parameterTable: {
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: SAND_2,
+    borderRadius: 5,
+    overflow: "hidden",
+  },
+  verificationHeader: {
+    flexDirection: "row",
+    backgroundColor: TABLE_HEAD,
+    borderBottomWidth: 1,
+    borderBottomColor: SAND_2,
+  },
+  verificationRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: SAND_2,
+  },
+  verificationRowLast: { flexDirection: "row" },
+  verificationCell: {
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    borderRightWidth: 1,
+    borderRightColor: SAND_2,
+    fontSize: 6.8,
+  },
+  verificationCellLast: {
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    fontSize: 6.8,
+  },
   certificateAlert: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 7,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: "#EDB6B1",
+    borderColor: FAIL_BORDER,
     borderRadius: 6,
     backgroundColor: FAIL_BG,
     paddingVertical: 8,
     paddingHorizontal: 10,
-    fontSize: 7,
-    lineHeight: 1.45,
+  },
+  signatureBoxEmpty: {
+    borderWidth: 1,
+    borderColor: SAND_3,
+    borderStyle: "dashed",
+    borderRadius: 5,
+    backgroundColor: WHITE,
+    height: 38,
+    padding: 3,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signOffTitle: {
+    marginTop: 14,
+    marginBottom: 8,
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
     color: BLACK,
+  },
+  signOffMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 3,
+    fontSize: 6.6,
+    color: SAND_4,
+  },
+  signOffName: { fontFamily: "Helvetica-Bold", color: BLACK },
+  signOffHash: {
+    marginTop: 2,
+    fontFamily: "Courier",
+    fontSize: 5.8,
+    color: SAND_3,
   },
   footer: {
     position: "absolute",
@@ -387,11 +522,85 @@ const styles = StyleSheet.create({
 const NA = "N/A";
 const EMPTY = "-";
 
-function statusChipStyle(status: string) {
-  if (status === "PASS") return { color: PASS, backgroundColor: PASS_BG };
-  if (status === "FAIL") return { color: FAIL, backgroundColor: FAIL_BG };
-  if (status === "MIXED") return { color: "#B54708", backgroundColor: "#FEF0C7" };
-  return { color: NEUTRAL, backgroundColor: NEUTRAL_BG };
+function IconCheck({ color, size = 8 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path
+        d="M20 6 9 17l-5-5"
+        stroke={color}
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+function IconAlert({ color, size = 8 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2.2} fill="none" />
+      <Path d="M12 7.5v5" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+      <Path d="M12 16.4v0.1" stroke={color} strokeWidth={2.4} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function IconClock({ color, size = 8 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2.2} fill="none" />
+      <Path
+        d="M12 7v5.2l3.2 2"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+function OutcomeIcon({
+  outcome,
+  color,
+  size,
+}: {
+  outcome: Outcome;
+  color: string;
+  size?: number;
+}) {
+  if (outcome === "pass") return <IconCheck color={color} size={size} />;
+  if (outcome === "deviation") return <IconAlert color={color} size={size} />;
+  return <IconClock color={color} size={size} />;
+}
+
+/** Chip de estado del encabezado: icono + etiqueta, en el color del veredicto. */
+function OutcomeChip({
+  outcome,
+  label,
+  large,
+}: {
+  outcome: Outcome;
+  label: string;
+  large?: boolean;
+}) {
+  const tone = OUTCOME_TONE[outcome];
+  return (
+    <View
+      style={[
+        large ? styles.chipLarge : styles.chip,
+        { backgroundColor: tone.bg, borderColor: tone.border },
+      ]}
+    >
+      <OutcomeIcon outcome={outcome} color={tone.color} size={large ? 10 : 8} />
+      <Text style={[large ? styles.chipLargeText : styles.chipText, { color: tone.color }]}>
+        {label}
+      </Text>
+    </View>
+  );
 }
 
 function Field({ label, value, last }: { label: string; value: string; last?: boolean }) {
@@ -441,7 +650,7 @@ function BrandHeader({
 }) {
   const t = createTranslator(locale);
   return (
-    <View style={styles.header} fixed>
+    <View style={styles.header}>
       <View style={styles.headerLeft}>
         <View style={styles.logoBox}>
           <SigLogo width={24} />
@@ -472,15 +681,19 @@ function SignatureSlot({
   return (
     <View>
       <Text style={styles.blockLabel}>{label}</Text>
-      <View style={styles.signatureBox}>
-        {signature ? (
-          // El Image de @react-pdf/renderer dibuja en el PDF, no es un <img>: no admite alt.
-          // eslint-disable-next-line jsx-a11y/alt-text
+      {signature ? (
+        <View style={styles.signatureBox}>
+          {/* El Image de @react-pdf/renderer dibuja en el PDF, no es un <img>: no admite alt. */}
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
           <Image src={signature.imageUrl} style={styles.signatureImage} />
-        ) : (
-          <Text style={styles.unsigned}>{t("pdf.notSigned")}</Text>
-        )}
-      </View>
+        </View>
+      ) : (
+        // Un recuadro punteado y vacío se lee como "falta firmar"; uno sólido
+        // se confunde con una firma que no cargó.
+        <View style={styles.signatureBoxEmpty}>
+          <Text style={styles.unsigned}>{t("pdf.awaitingSignature")}</Text>
+        </View>
+      )}
       <Text style={styles.caption}>
         {signature
           ? `${signature.signerName} - ${signature.signerTitle} - ${signature.signedAt}`
@@ -509,12 +722,9 @@ function Footer({ report, locale }: { report: PdfReport; locale: Locale }) {
 
 function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
   const t = createTranslator(locale);
-  const hasDeviation = report.certificates.some(
-    (certificate) =>
-      certificate.overallStatus === "FAIL" ||
-      certificate.overallStatus === "MIXED" ||
-      certificate.columns.some((column) => column.status === "FAIL")
-  );
+  const outcome = reportOutcome(report.certificates);
+  const tone = OUTCOME_TONE[outcome];
+  const channels = countChannels(report.certificates);
   const standards = Array.from(
     new Map(
       report.certificates.map((certificate) => [
@@ -524,20 +734,21 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
     ).values()
   );
   const certificateSummary = report.certificates.map((certificate) => {
-    const channels = certificate.columns.filter((column) => !column.excluded);
+    const columns = evaluatedColumns(certificate);
     return {
       certificate,
-      pass: channels.filter((column) => column.status === "PASS").length,
-      total: channels.length,
+      outcome: certificateOutcome(certificate),
+      pass: columns.filter((column) => column.status === "PASS").length,
+      total: columns.length,
+      failed: columns.filter((column) => column.status === "FAIL").length,
+      pending: columns.filter(
+        (column) => column.status !== "PASS" && column.status !== "FAIL"
+      ).length,
     };
   });
-  const certificateNames = report.certificates
-    .map((certificate) =>
-      certificate.title
-        .replace(" Calibration Certificate", "")
-        .replace(" Certificado de calibración", "")
-    )
-    .join(" - ");
+  const certificateNames = t("pdf.sectionCount", {
+    count: report.certificates.length,
+  });
 
   return (
     <Page size="LETTER" style={styles.page}>
@@ -551,16 +762,7 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
           </Text>
           <Text style={styles.coverSubtitle}>{certificateNames}</Text>
         </View>
-        <Text
-          style={[
-            styles.chip,
-            hasDeviation
-              ? { color: FAIL, backgroundColor: FAIL_BG }
-              : { color: PASS, backgroundColor: PASS_BG },
-          ]}
-        >
-          {hasDeviation ? t("pdf.deviationRecorded") : t("pdf.calibrationComplete")}
-        </Text>
+        <OutcomeChip outcome={outcome} label={t(outcomeLabelKeys[outcome])} large />
       </View>
 
       <View style={styles.summaryCard}>
@@ -598,43 +800,59 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
 
       <Text style={styles.sectionTitle}>{t("pdf.summaryResults")}</Text>
       <View style={styles.resultGrid}>
-        {certificateSummary.map(({ certificate, pass, total }) => {
-          const failed =
-            certificate.overallStatus === "FAIL" || certificate.overallStatus === "MIXED";
-          const tone = failed
-            ? { color: FAIL, borderColor: "#EDB6B1", backgroundColor: FAIL_BG }
-            : { color: PASS, borderColor: "#A9D7BC", backgroundColor: PASS_BG };
+        {certificateSummary.map((summary) => {
+          const cardTone = OUTCOME_TONE[summary.outcome];
+          // La línea de abajo dice por qué la tarjeta no está verde.
+          const reason =
+            summary.failed > 0
+              ? t("pdf.failCount", { count: summary.failed })
+              : summary.pending > 0
+                ? t("pdf.pendingCount", { count: summary.pending })
+                : null;
+
           return (
-            <View key={certificate.certificateType} style={[styles.resultCard, tone]}>
-              <Text style={styles.resultName}>
-                {certificate.title
-                  .replace(" Calibration Certificate", "")
-                  .replace(" Certificado de calibración", "")}
+            <View
+              key={summary.certificate.certificateType}
+              style={[
+                styles.resultCard,
+                { borderColor: cardTone.border, backgroundColor: cardTone.bg },
+              ]}
+            >
+              <Text style={[styles.resultName, { color: cardTone.color }]}>
+                {summary.certificate.title}
               </Text>
-              <Text style={styles.resultCount}>
-                {t("pdf.passCount", { pass, total })}
+              <Text style={[styles.resultCount, { color: cardTone.color }]}>
+                {t("pdf.passCount", { pass: summary.pass, total: summary.total })}
               </Text>
               <Text style={styles.resultMeta}>
-                {t("pdf.toleranceLabel", { tolerance: certificate.tolerance || "-" })}
+                {reason ? `${reason} · ` : ""}
+                {t("pdf.toleranceLabel", {
+                  tolerance: summary.certificate.tolerance || "-",
+                })}
               </Text>
             </View>
           );
         })}
       </View>
 
-      <Text
-        style={[
-          styles.alert,
-          hasDeviation
-            ? { borderColor: "#EDB6B1", backgroundColor: FAIL_BG, color: FAIL }
-            : { borderColor: "#A9D7BC", backgroundColor: PASS_BG, color: PASS },
-        ]}
+      <View
+        style={[styles.alert, { borderColor: tone.border, backgroundColor: tone.bg }]}
       >
-        <Text style={styles.alertTitle}>
-          {hasDeviation ? `${t("pdf.deviationRecorded")}. ` : `${t("pdf.calibrationComplete")}. `}
+        <View style={styles.alertIcon}>
+          <OutcomeIcon outcome={outcome} color={tone.color} size={9} />
+        </View>
+        <Text style={styles.alertBody}>
+          <Text style={[styles.alertTitle, { color: tone.color }]}>
+            {t("pdf.overallLabel", { outcome: t(outcomeLabelKeys[outcome]).toLowerCase() })}{" "}
+          </Text>
+          {t("pdf.channelsWithinTolerance", {
+            pass: channels.pass,
+            total: channels.total,
+          })}
+          {/* Cuando todo pasó, el conteo ya lo dice todo: repetirlo sobra. */}
+          {outcome !== "pass" && ` ${t(outcomeBodyKeys[outcome])}`}
         </Text>
-        {hasDeviation ? t("pdf.overallDeviation") : t("pdf.overallComplete")}
-      </Text>
+      </View>
 
       <Text style={styles.sectionTitle}>{t("pdf.referenceTraceability")}</Text>
       <View style={styles.traceTable}>
@@ -665,13 +883,34 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
         ))}
       </View>
 
-      <View style={styles.twoCol}>
+      {/* Observaciones y firmas comparten una sola fila: la portada ya carga el
+          resumen y la trazabilidad, y apilarlas la desborda a una segunda página. */}
+      <View style={styles.threeCol}>
         <View style={styles.col}>
           <Text style={styles.blockLabel}>{t("pdf.observations")}</Text>
           <Text style={styles.observations}>{report.observations ?? EMPTY}</Text>
         </View>
         <View style={styles.col}>
-          <SignatureSlot signature={report.signature} label={t("pdf.signOff")} locale={locale} />
+          <SignatureSlot
+            signature={report.signature}
+            label={t("pdf.serviceEngineer")}
+            locale={locale}
+          />
+          {report.signature && (
+            <Text style={styles.signOffHash}>
+              {t("pdf.signedElectronically")} · SHA {report.signature.payloadHash.slice(0, 4)}…
+              {report.signature.payloadHash.slice(-4)}
+            </Text>
+          )}
+        </View>
+        <View style={styles.col}>
+          <Text style={styles.blockLabel}>{t("pdf.clientAcknowledgement")}</Text>
+          <View style={styles.signatureBoxEmpty} />
+          <View style={styles.signOffMeta}>
+            <Text>{t("pdf.nameRole")}</Text>
+            <Text>{t("pdf.date")}</Text>
+          </View>
+          <Text style={styles.signOffHash}>{t("pdf.countersign")}</Text>
         </View>
       </View>
 
@@ -691,8 +930,8 @@ const pdfDataLabelKeys: Record<string, MessageKey> = {
   Description: "pdf.description",
   "Target reference (nominal)": "pdf.targetReference",
   "Actual reference": "pdf.actualReference",
-  "UUT reading (As Found)": "pdf.uutAsFound",
-  "UUT reading (As Left)": "pdf.uutAsLeft",
+  "Reading (As Found)": "pdf.uutAsFound",
+  "Reading (As Left)": "pdf.uutAsLeft",
   Deviation: "pdf.deviation",
 };
 
@@ -787,18 +1026,18 @@ function CertificatePage({
   const t = createTranslator(locale);
   const { columns } = certificate;
   const span = columns.length;
-  const evaluatedColumns = columns.filter((column) => !column.excluded);
-  const passCount = evaluatedColumns.filter((column) => column.status === "PASS").length;
-  const issues = [
-    certificate.notes,
-    ...columns
-      .filter((column) => column.status === "FAIL")
-      .map(
-        (column) =>
-          column.statusReason ||
-          `${column.tagNumber} ${column.description}: ${translate(locale, "pdf.deviationRecorded")}`
-      ),
-  ].filter((issue): issue is string => Boolean(issue));
+  const evaluated = evaluatedColumns(certificate);
+  const passCount = evaluated.filter((column) => column.status === "PASS").length;
+  const outcome = certificateOutcome(certificate);
+  // Las observaciones del ingeniero tienen su propio bloque neutro; esta alerta
+  // es solo para las desviaciones que reprobaron.
+  const issues = columns
+    .filter((column) => column.status === "FAIL")
+    .map(
+      (column) =>
+        column.statusReason ||
+        `${column.tagNumber} ${column.description}: ${translate(locale, "pdf.deviationRecorded")}`
+    );
   const pointOf = (column: PdfDeviceColumn, kind: PointKind) =>
     column.points.find((point) => point.kind === kind) ?? null;
 
@@ -808,15 +1047,16 @@ function CertificatePage({
 
       <View style={styles.titleRow}>
         <Text style={styles.certTitle}>{certificate.title}</Text>
-        <Text style={[styles.chip, statusChipStyle(certificate.overallStatus)]}>
-          {certificate.overallStatus === "PASS"
-            ? `${t("measurement.pass")} - ${passCount}/${evaluatedColumns.length}`
-            : certificate.overallStatus === "FAIL"
-              ? `${t("measurement.fail")} - ${passCount}/${evaluatedColumns.length}`
-              : certificate.overallStatus === "MIXED"
-                ? `${t("measurement.mixed")} - ${passCount}/${evaluatedColumns.length}`
-                : t("measurement.pending")}
-        </Text>
+        <OutcomeChip
+          outcome={outcome}
+          label={
+            outcome === "pass"
+              ? `${t("measurement.pass")} · ${passCount}/${evaluated.length}`
+              : outcome === "deviation"
+                ? `${t("measurement.fail")} · ${passCount}/${evaluated.length}`
+                : `${t("measurement.pending")} · ${passCount}/${evaluated.length}`
+          }
+        />
       </View>
       <Text style={styles.certLead}>
         {t("pdf.instructions")}
@@ -867,7 +1107,7 @@ function CertificatePage({
               pick={(c) => pointOf(c, kind)?.asFoundReference ?? null}
             />
             <DataRow
-              label="UUT reading (As Found)"
+              label="Reading (As Found)"
               locale={locale}
               columns={columns}
               pick={(c) => pointOf(c, kind)?.asFoundReading ?? null}
@@ -890,7 +1130,7 @@ function CertificatePage({
               pick={(c) => pointOf(c, kind)?.asLeftReference ?? null}
             />
             <DataRow
-              label="UUT reading (As Left)"
+              label="Reading (As Left)"
               locale={locale}
               columns={columns}
               pick={(c) => pointOf(c, kind)?.asLeftReading ?? null}
@@ -909,13 +1149,23 @@ function CertificatePage({
       </View>
 
       {issues.length > 0 && (
-        <Text style={styles.certificateAlert}>
-          <Text style={[styles.alertTitle, { color: FAIL }]}>
-            {t("pdf.observation")}.{" "}
+        <View style={styles.certificateAlert}>
+          <View style={styles.alertIcon}>
+            <IconAlert color={FAIL} size={9} />
+          </View>
+          <Text style={styles.alertBody}>
+            <Text style={[styles.alertTitle, { color: FAIL }]}>
+              {t("pdf.observation")}.{" "}
+            </Text>
+            {issues.join(" ")}
           </Text>
-          {issues.join(" ")}
-        </Text>
+        </View>
       )}
+
+      <View style={styles.certObservations}>
+        <Text style={styles.blockLabel}>{t("pdf.observations")}</Text>
+        <Text style={styles.certObservationsBox}>{certificate.notes ?? EMPTY}</Text>
+      </View>
 
       <View style={styles.twoCol}>
         <View style={styles.col}>
@@ -951,6 +1201,298 @@ function CertificatePage({
   );
 }
 
+function CertificateValidation({
+  certificate,
+  locale,
+}: {
+  certificate: PdfCertificate;
+  locale: Locale;
+}) {
+  const t = createTranslator(locale);
+  return (
+    <View style={styles.twoCol}>
+      <View style={styles.col}>
+        <SectionBar>{t("pdf.standardValidation")}</SectionBar>
+        <View style={styles.table}>
+          <Field
+            label={t("pdf.deviceDescription")}
+            value={certificate.standard.description}
+          />
+          <Field
+            label={t("pdf.manufacturer")}
+            value={certificate.standard.manufacturer}
+          />
+          <Field label={t("pdf.model")} value={certificate.standard.model} />
+          <Field label={t("pdf.serial")} value={certificate.standard.serial} />
+          <Field
+            label={t("pdf.calibrationCertificate")}
+            value={certificate.standard.certNumber}
+          />
+          <Field
+            label={t("pdf.calibrationDate")}
+            value={certificate.standard.calibrationDate}
+          />
+          <Field
+            label={t("pdf.validTo")}
+            value={certificate.standard.validTo}
+            last
+          />
+        </View>
+      </View>
+      <View style={styles.col}>
+        <SignatureSlot
+          signature={certificate.signature}
+          label={t("pdf.signatureDate")}
+          locale={locale}
+        />
+      </View>
+    </View>
+  );
+}
+
+function TestReadingsPage({
+  report,
+  certificate,
+  locale,
+}: {
+  report: PdfReport;
+  certificate: PdfCertificate;
+  locale: Locale;
+}) {
+  const t = createTranslator(locale);
+  const outcome = certificateOutcome(certificate);
+  const evaluated = evaluatedColumns(certificate);
+  const passCount = evaluated.filter((column) => column.status === "PASS").length;
+  const isUltrasonic =
+    certificate.certificateType === "ULTRASONIC";
+  const readingAt = (column: PdfDeviceColumn, sequence: number) =>
+    column.readings.find((reading) => reading.sequence === sequence);
+  const testCount = Math.max(
+    2,
+    ...certificate.columns.map((column) => column.readings.length)
+  );
+
+  return (
+    <Page size="LETTER" style={styles.page}>
+      <BrandHeader report={report} locale={locale} />
+      <View style={styles.titleRow}>
+        <Text style={styles.certTitle}>{certificate.title}</Text>
+        <OutcomeChip
+          outcome={outcome}
+          label={`${t(
+            outcome === "pass"
+              ? "measurement.pass"
+              : outcome === "deviation"
+                ? "measurement.fail"
+                : "measurement.pending"
+          )} · ${passCount}/${evaluated.length}`}
+        />
+      </View>
+      <Text style={styles.certLead}>{t("pdf.testInstructions")}</Text>
+
+      <SectionBar>{t("pdf.testingParameters")}</SectionBar>
+      <View style={styles.parameterTable}>
+        {!isUltrasonic && (
+          <>
+            <Field
+              label={t("pdf.meteringRate")}
+              value={certificate.params.meteringRate ?? EMPTY}
+            />
+            <Field
+              label={t("pdf.durationMinutes")}
+              value={certificate.params.durationMinutes ?? EMPTY}
+            />
+          </>
+        )}
+        {isUltrasonic && (
+          <Field
+            label={t("pdf.targetWeight")}
+            value={
+              certificate.params.targetWeight
+                ? `${certificate.params.targetWeight} g`
+                : EMPTY
+            }
+          />
+        )}
+        <Field
+          label={t("pdf.material")}
+          value={certificate.params.material ?? EMPTY}
+        />
+        <Field
+          label={t("pdf.acceptableLimit")}
+          value={certificate.tolerance ? `± ${certificate.tolerance}` : EMPTY}
+          last
+        />
+      </View>
+
+      <SectionBar>{t("pdf.devicesUnit", { unit: certificate.unit })}</SectionBar>
+      <View style={styles.table}>
+        <DataRow
+          label="Tag Number"
+          locale={locale}
+          columns={certificate.columns}
+          pick={(column) => column.tagNumber}
+          identity
+          strong
+        />
+        <DataRow
+          label="Description"
+          locale={locale}
+          columns={certificate.columns}
+          pick={(column) => column.description}
+          identity
+          zebra
+        />
+        <DataRow
+          label={t("pdf.target")}
+          locale={locale}
+          columns={certificate.columns}
+          pick={(column) => readingAt(column, 1)?.target ?? null}
+        />
+        {Array.from({ length: testCount }, (_, index) => index + 1).map(
+          (sequence) => (
+            <React.Fragment key={sequence}>
+              <GroupHeader
+                label={t("pdf.testNumber", { number: sequence })}
+                span={certificate.columns.length}
+              />
+              <DataRow
+                label={t("pdf.actualReading")}
+                locale={locale}
+                columns={certificate.columns}
+                pick={(column) => readingAt(column, sequence)?.value ?? null}
+                zebra
+              />
+              <DataRow
+                label="Deviation"
+                locale={locale}
+                columns={certificate.columns}
+                pick={(column) =>
+                  readingAt(column, sequence)?.deviation ?? null
+                }
+              />
+            </React.Fragment>
+          )
+        )}
+      </View>
+
+      <View style={styles.certObservations}>
+        <Text style={styles.blockLabel}>{t("pdf.observations")}</Text>
+        <Text style={styles.certObservationsBox}>
+          {certificate.notes ?? EMPTY}
+        </Text>
+      </View>
+      <CertificateValidation certificate={certificate} locale={locale} />
+      <Footer report={report} locale={locale} />
+    </Page>
+  );
+}
+
+function VerificationPage({
+  report,
+  certificate,
+  locale,
+}: {
+  report: PdfReport;
+  certificate: PdfCertificate;
+  locale: Locale;
+}) {
+  const t = createTranslator(locale);
+  const outcome = certificateOutcome(certificate);
+
+  return (
+    <Page size="LETTER" style={styles.page}>
+      <BrandHeader report={report} locale={locale} />
+      <View style={styles.titleRow}>
+        <Text style={styles.certTitle}>{certificate.title}</Text>
+        <OutcomeChip
+          outcome={outcome}
+          label={t(
+            outcome === "pass"
+              ? "measurement.pass"
+              : "measurement.pending"
+          )}
+        />
+      </View>
+      <Text style={styles.certLead}>{t("pdf.verificationReferenceOnly")}</Text>
+
+      <SectionBar>{t("pdf.exhaustReadings")}</SectionBar>
+      <View style={styles.table}>
+        <View style={styles.verificationHeader}>
+          <Text style={[styles.verificationCell, { width: "16%" }]}>
+            {t("pdf.tagNumber")}
+          </Text>
+          <Text style={[styles.verificationCell, { width: "28%" }]}>
+            {t("pdf.description")}
+          </Text>
+          <Text style={[styles.verificationCell, { width: "26%" }]}>
+            {t("pdf.areaReading")}
+          </Text>
+          <Text style={[styles.verificationCell, { width: "15%" }]}>SCFM</Text>
+          <Text style={[styles.verificationCellLast, { width: "15%" }]}>
+            {t("pdf.driveHz")}
+          </Text>
+        </View>
+        {certificate.verificationRows.map((row, index) => (
+          <View
+            key={`${row.motorTag}:${row.rowLabel}`}
+            style={
+              index === certificate.verificationRows.length - 1
+                ? styles.verificationRowLast
+                : styles.verificationRow
+            }
+          >
+            <Text
+              style={[
+                styles.verificationCell,
+                styles.identity,
+                { width: "16%" },
+              ]}
+            >
+              {row.motorTag}
+            </Text>
+            <Text style={[styles.verificationCell, { width: "28%" }]}>
+              {row.description}
+            </Text>
+            <Text style={[styles.verificationCell, { width: "26%" }]}>
+              {row.rowLabel}
+            </Text>
+            <Text
+              style={[
+                styles.verificationCell,
+                styles.traceTechnical,
+                { width: "15%", textAlign: "center" },
+              ]}
+            >
+              {row.scfm ?? EMPTY}
+            </Text>
+            <Text
+              style={[
+                styles.verificationCellLast,
+                styles.traceTechnical,
+                { width: "15%", textAlign: "center" },
+              ]}
+            >
+              {row.notApplicable
+                ? NA
+                : row.driveFrequencyHz ?? EMPTY}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.certObservations}>
+        <Text style={styles.blockLabel}>{t("pdf.observations")}</Text>
+        <Text style={styles.certObservationsBox}>
+          {certificate.notes ?? EMPTY}
+        </Text>
+      </View>
+      <CertificateValidation certificate={certificate} locale={locale} />
+      <Footer report={report} locale={locale} />
+    </Page>
+  );
+}
+
 export function ReportDocument({
   report,
   locale = DEFAULT_LOCALE,
@@ -967,14 +1509,30 @@ export function ReportDocument({
       modificationDate={report.documentDate}
     >
       <CoverPage report={report} locale={locale} />
-      {report.certificates.map((certificate) => (
-        <CertificatePage
-          key={certificate.certificateType}
-          report={report}
-          certificate={certificate}
-          locale={locale}
-        />
-      ))}
+      {report.certificates.map((certificate) =>
+        certificate.layout === CertificateLayout.TEST_READINGS ? (
+          <TestReadingsPage
+            key={certificate.certificateType}
+            report={report}
+            certificate={certificate}
+            locale={locale}
+          />
+        ) : certificate.layout === CertificateLayout.VERIFICATION ? (
+          <VerificationPage
+            key={certificate.certificateType}
+            report={report}
+            certificate={certificate}
+            locale={locale}
+          />
+        ) : (
+          <CertificatePage
+            key={certificate.certificateType}
+            report={report}
+            certificate={certificate}
+            locale={locale}
+          />
+        )
+      )}
     </Document>
   );
 }

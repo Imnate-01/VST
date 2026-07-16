@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { requireAuth } from "@/server/auth";
 import { getReportForWizard } from "@/server/services/reports";
+import { getReportProgress } from "@/server/services/report-progress";
 import { ReportStatusBadge } from "@/components/report/report-status-badge";
-import { WizardNav } from "@/components/wizard/wizard-nav";
+import { WizardNav, type WizardNavProgress } from "@/components/wizard/wizard-nav";
 import { getTranslations } from "@/lib/i18n-server";
 import { formatDateInput } from "@/lib/utils";
 
@@ -17,12 +18,26 @@ export default async function ReportWizardLayout({ children, params }: Props) {
   const { id } = await params;
   const session = await requireAuth();
   const { t } = await getTranslations();
-  const data = await getReportForWizard(id, {
-    id: session.user.id,
-    role: session.user.role,
-  });
+  const actor = { id: session.user.id, role: session.user.role };
+  const [data, progress] = await Promise.all([
+    getReportForWizard(id, actor),
+    getReportProgress(id, actor),
+  ]);
 
-  if (!data) notFound();
+  if (!data || !progress) notFound();
+
+  const navProgress: WizardNavProgress = {
+    checklist: progress.checklist,
+    instruments: progress.instruments,
+    certificates: Object.fromEntries(
+      progress.certificates.map((certificate) => [
+        certificate.certificateType,
+        certificate.complete,
+      ])
+    ),
+    review: progress.review,
+    reviewEnabled: progress.reviewEnabled,
+  };
 
   return (
     <div className="space-y-0">
@@ -64,7 +79,7 @@ export default async function ReportWizardLayout({ children, params }: Props) {
         </dl>
       </header>
 
-      <WizardNav reportId={id} />
+      <WizardNav reportId={id} progress={navProgress} />
       <div className="mx-auto w-full max-w-6xl pt-10">{children}</div>
     </div>
   );

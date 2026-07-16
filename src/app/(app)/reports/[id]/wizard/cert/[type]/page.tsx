@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CertificateLayout, CertificateType } from "@prisma/client";
 import { requireAuth } from "@/server/auth";
 import { getCertificateForWizard } from "@/server/services/certificates";
 import { getActiveCertificateSignature } from "@/server/services/signatures";
@@ -24,6 +25,10 @@ import {
 } from "@/components/wizard/step-certificate-form";
 import { CertificateStep } from "@/components/wizard/certificate-step";
 import { hasCompleteCertificateMeasurement } from "@/server/domain/certificate-completeness";
+import {
+  hasCompleteTestReadings,
+  hasCompleteVerificationRows,
+} from "@/server/domain/certificate-completeness";
 
 type Props = {
   params: Promise<{ id: string; type: string }>;
@@ -79,7 +84,10 @@ export default async function CertificateWizardPage({ params }: Props) {
     );
   }
 
-  if (data.deviceSelections.length === 0) {
+  if (
+    data.deviceSelections.length === 0 &&
+    config.layout !== CertificateLayout.VERIFICATION
+  ) {
     return (
       <Card>
         <CardHeader>
@@ -102,34 +110,6 @@ export default async function CertificateWizardPage({ params }: Props) {
   const measurementByDeviceSelectionId = new Map(
     data.measurements.map((measurement) => [measurement.deviceSelectionId, measurement])
   );
-
-  const initialMeasurements = data.deviceSelections.map((selection) => {
-    const measurement = measurementByDeviceSelectionId.get(selection.id);
-    const defaults = getDefaultTargets({
-      certificateType,
-      description: selection.descriptionSnapshot,
-    });
-    const savedPointByKind = new Map(
-      (measurement?.points ?? []).map((point) => [point.kind, point])
-    );
-
-    return {
-      deviceSelectionId: selection.id,
-      points: config.pointKinds.map((kind) => {
-        const saved = savedPointByKind.get(kind);
-
-        return {
-          kind,
-          conditionValue: decimalToString(saved?.conditionValue),
-          targetNominal: decimalToString(saved?.targetNominal) || defaults[kind] || "",
-          asFoundReference: decimalToString(saved?.asFoundReference),
-          asFoundReading: decimalToString(saved?.asFoundReading),
-          asLeftReference: decimalToString(saved?.asLeftReference),
-          asLeftReading: decimalToString(saved?.asLeftReading),
-        };
-      }),
-    };
-  });
 
   const rows: MeasurementRow[] = data.deviceSelections.map((selection) => {
     const measurement = measurementByDeviceSelectionId.get(selection.id);
@@ -154,45 +134,231 @@ export default async function CertificateWizardPage({ params }: Props) {
   });
 
   const signature = await getActiveCertificateSignature(data.certificate.id);
+  const signatureView =
+    signature && {
+      signatureImageUrl: signature.signatureImageUrl,
+      signedAt: signature.signedAt,
+      signerName: signature.signer.name,
+      signerTitle: signature.signer.title,
+    };
+  const commonProps = {
+    title,
+    description: t("certificate.captureDescription", {
+      report: data.report.reportNumber,
+      standard: data.certificate.primaryStandard.descriptionSnapshot,
+      serial: data.certificate.primaryStandard.serialSnapshot,
+    }),
+    reportId: data.report.id,
+    certificateId: data.certificate.id,
+    certificateType,
+    signature: signatureView,
+    nextHref: getNextCertificateHref({
+      reportId: data.report.id,
+      certificateType,
+    }),
+  };
+
+  if (config.layout === CertificateLayout.TEST_READINGS) {
+    const storedParams = (data.certificate.params ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const stringParam = (key: string, fallback: string) =>
+      typeof storedParams[key] === "string"
+        ? (storedParams[key] as string)
+        : fallback;
+    const testType = certificateType;
+    const readingCount = config.testReadingCount ?? 2;
+    const initialMeasurements = data.deviceSelections.map((selection) => {
+      const saved = measurementByDeviceSelectionId.get(selection.id);
+      const savedBySequence = new Map(
+        (saved?.readings ?? []).map((reading) => [reading.sequence, reading])
+      );
+
+      return {
+        deviceSelectionId: selection.id,
+        readings: Array.from({ length: readingCount }, (_, index) => {
+          const sequence = index + 1;
+          return {
+            sequence,
+            value: decimalToString(savedBySequence.get(sequence)?.value),
+          };
+        }),
+      };
+    });
+    const params = {
+      meteringRate:
+        testType === CertificateType.METERING_PUMP_CHAMBER
+          ? stringParam("meteringRate", "7.5")
+          : testType === CertificateType.METERING_PUMP_TUNNEL
+            ? stringParam("meteringRate", "20")
+            : "",
+      durationMinutes:
+        testType === CertificateType.ULTRASONIC
+          ? ""
+          : stringParam("durationMinutes", "5"),
+      targetWeight:
+        testType === CertificateType.ULTRASONIC
+          ? stringParam("targetWeight", "124")
+          : "",
+      material: stringParam(
+        "material",
+        "Minimum 34% Hydrogen Peroxide"
+      ),
+    };
+    const complete =
+      data.measurements.length === data.deviceSelections.length &&
+      data.measurements.every((measurement) =>
+        hasCompleteTestReadings(readingCount, measurement.readings)
+      );
+
+    return (
+      <CertificateStep
+        {...commonProps}
+        mode="TEST_READINGS"
+        certificateType={testType}
+        rows={rows}
+        initialValues={{
+          reportId: data.report.id,
+          certificateId: data.certificate.id,
+          certificateType: testType,
+          notes: data.certificate.notes ?? "",
+          params,
+          measurements: initialMeasurements,
+        }}
+        initialReadyToSign={
+          complete && data.certificate.overallStatus !== "PENDING"
+        }
+      />
+    );
+  }
+
+  if (config.layout === CertificateLayout.VERIFICATION) {
+    const defaultRows = [
+      {
+        motorTag: "250",
+        description: "AUX 1 EXHAUST MOTOR",
+        rowLabel: "Filling Area Actual Reading",
+        notApplicable: false,
+        displayOrder: 10,
+      },
+      {
+        motorTag: "250",
+        description: "AUX 1 EXHAUST MOTOR",
+        rowLabel: "Assembly Area Actual Reading",
+        notApplicable: true,
+        displayOrder: 20,
+      },
+      {
+        motorTag: "255",
+        description: "AUX 2 EXHAUST MOTOR",
+        rowLabel: "Filling Area Actual Reading",
+        notApplicable: false,
+        displayOrder: 30,
+      },
+      {
+        motorTag: "255",
+        description: "AUX 2 EXHAUST MOTOR",
+        rowLabel: "Assembly Area Actual Reading",
+        notApplicable: true,
+        displayOrder: 40,
+      },
+      {
+        motorTag: "260",
+        description: "Lower Exhaust",
+        rowLabel: "Actual Reading",
+        notApplicable: false,
+        displayOrder: 50,
+      },
+    ];
+    const verificationRows =
+      data.certificate.verificationRows.length > 0
+        ? [...data.certificate.verificationRows]
+            .sort((a, b) => a.displayOrder - b.displayOrder)
+            .map((row) => ({
+              motorTag: row.motorTag,
+              description: row.description,
+              rowLabel: row.rowLabel,
+              scfm: decimalToString(row.scfm),
+              driveFrequencyHz: decimalToString(row.driveFrequencyHz),
+              notApplicable: row.notApplicable,
+              displayOrder: row.displayOrder,
+            }))
+        : defaultRows.map((row) => ({
+            ...row,
+            scfm: "",
+            driveFrequencyHz: "",
+          }));
+
+    return (
+      <CertificateStep
+        {...commonProps}
+        mode="VERIFICATION"
+        certificateType={CertificateType.EXHAUST}
+        initialValues={{
+          reportId: data.report.id,
+          certificateId: data.certificate.id,
+          certificateType: CertificateType.EXHAUST,
+          notes: data.certificate.notes ?? "",
+          rows: verificationRows,
+        }}
+        initialReadyToSign={
+          hasCompleteVerificationRows(verificationRows) &&
+          data.certificate.overallStatus !== "PENDING"
+        }
+      />
+    );
+  }
+
+  const initialMeasurements = data.deviceSelections.map((selection) => {
+    const measurement = measurementByDeviceSelectionId.get(selection.id);
+    const defaults = getDefaultTargets({
+      certificateType,
+      description: selection.descriptionSnapshot,
+    });
+    const savedPointByKind = new Map(
+      (measurement?.points ?? []).map((point) => [point.kind, point])
+    );
+
+    return {
+      deviceSelectionId: selection.id,
+      points: config.pointKinds.map((kind) => {
+        const saved = savedPointByKind.get(kind);
+
+        return {
+          kind,
+          conditionValue: decimalToString(saved?.conditionValue),
+          targetNominal:
+            decimalToString(saved?.targetNominal) || defaults[kind] || "",
+          asFoundReference: decimalToString(saved?.asFoundReference),
+          asFoundReading: decimalToString(saved?.asFoundReading),
+          asLeftReference: decimalToString(saved?.asLeftReference),
+          asLeftReading: decimalToString(saved?.asLeftReading),
+        };
+      }),
+    };
+  });
   const measurementsComplete =
     data.measurements.length === data.deviceSelections.length &&
     data.measurements.every((measurement) =>
       hasCompleteCertificateMeasurement(certificateType, measurement.points)
     );
-  const certificateReadyToSign =
-    measurementsComplete && data.certificate.overallStatus !== "PENDING";
 
   return (
     <CertificateStep
-      title={title}
-      description={t("certificate.captureDescription", {
-        report: data.report.reportNumber,
-        standard: data.certificate.primaryStandard.descriptionSnapshot,
-        serial: data.certificate.primaryStandard.serialSnapshot,
-      })}
-      reportId={data.report.id}
-      certificateId={data.certificate.id}
-      certificateType={certificateType}
+      {...commonProps}
+      mode="POINTS"
       rows={rows}
       initialValues={{
         reportId: data.report.id,
         certificateId: data.certificate.id,
         certificateType,
+        notes: data.certificate.notes ?? "",
         measurements: initialMeasurements,
       }}
-      initialReadyToSign={certificateReadyToSign}
-      signature={
-        signature && {
-          signatureImageUrl: signature.signatureImageUrl,
-          signedAt: signature.signedAt,
-          signerName: signature.signer.name,
-          signerTitle: signature.signer.title,
-        }
+      initialReadyToSign={
+        measurementsComplete && data.certificate.overallStatus !== "PENDING"
       }
-      nextHref={getNextCertificateHref({
-        reportId: data.report.id,
-        certificateType,
-      })}
     />
   );
 }

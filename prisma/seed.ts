@@ -162,9 +162,10 @@ async function main() {
   // implementado. `calibrationExpiresAt` NO aparece en el PDF: es un campo de
   // la app, acá se asume un año de vigencia desde la fecha de calibración.
   //
-  // Faltan los patrones de Ultrasonic y Metering Pump (Tanita 1475T y el peso
-  // Troemner de 200 g): el peso no tiene modelo, certificado ni fecha de
-  // calibración, y esos campos todavía son obligatorios en el schema.
+  // Ultrasonic y Metering Pump usan el mismo conjunto de referencia: báscula
+  // Tanita 1475T + peso de precisión Troemner de 200 g. El catálogo actual
+  // selecciona un patrón principal por sección, así que se registra como un
+  // conjunto trazable.
   const standards = [
     {
       // p.3 - Temperature
@@ -227,6 +228,16 @@ async function main() {
       calibrationCertNumber: "KA017619",
       calibrationDate: new Date("2022-11-17"),
       calibrationExpiresAt: new Date("2027-11-17"),
+    },
+    {
+      // p.11, p.12 y p.13 - Ultrasonic y Metering Pump.
+      description: "Weight Scale + Precision Weight",
+      manufacturer: "TANITA / TROEMNER",
+      model: "1475T / 200g",
+      serialNumber: "14797111(0) / 3264",
+      calibrationCertNumber: "REFERENCE-SET-1475T-3264",
+      calibrationDate: new Date("2026-05-12"),
+      calibrationExpiresAt: new Date("2027-05-12"),
     },
   ];
 

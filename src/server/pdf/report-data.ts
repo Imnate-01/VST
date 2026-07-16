@@ -1,10 +1,15 @@
-import { PointKind, ReportStatus, type CertificateType, type UserRole } from "@prisma/client";
+import {
+  CertificateLayout,
+  PointKind,
+  ReportStatus,
+  type CertificateType,
+  type UserRole,
+} from "@prisma/client";
 import { prisma } from "@/server/db";
 import {
   CERTIFICATE_CONFIG,
   getCertificateLabel,
   getConditionLabel,
-  isPointLayout,
 } from "@/lib/certificates";
 import { DEFAULT_LOCALE, translate, type Locale } from "@/lib/i18n";
 
@@ -43,6 +48,13 @@ export type PdfDeviceColumn = {
   statusReason: string | null;
   requiredAdjustment: boolean;
   points: PdfPoint[];
+  readings: Array<{
+    sequence: number;
+    value: string | null;
+    target: string | null;
+    deviation: string | null;
+    inTolerance: boolean | null;
+  }>;
 };
 
 export type PdfSignature = {
@@ -50,10 +62,16 @@ export type PdfSignature = {
   signedAt: string;
   signerName: string;
   signerTitle: string;
+  /**
+   * Hash del contenido firmado. Es el del payload de la firma, no el del PDF:
+   * el hash del PDF no puede imprimirse dentro del propio PDF sin cambiarlo.
+   */
+  payloadHash: string;
 };
 
 export type PdfCertificate = {
   certificateType: CertificateType;
+  layout: CertificateLayout;
   title: string;
   overallStatus: string;
   pointKinds: readonly PointKind[];
@@ -62,6 +80,7 @@ export type PdfCertificate = {
   unit: string;
   tolerance: string;
   notes: string | null;
+  params: Record<string, string>;
   standard: {
     description: string;
     manufacturer: string;
@@ -72,6 +91,15 @@ export type PdfCertificate = {
     validTo: string;
   };
   columns: PdfDeviceColumn[];
+  verificationRows: Array<{
+    motorTag: string;
+    description: string;
+    rowLabel: string;
+    scfm: string | null;
+    driveFrequencyHz: string | null;
+    notApplicable: boolean;
+    displayOrder: number;
+  }>;
   signature: PdfSignature | null;
 };
 
@@ -97,6 +125,7 @@ export type PdfReport = {
 function toPdfSignature(signature: {
   signatureImageUrl: string;
   signedAt: Date;
+  payloadHash: string;
   signer: { name: string; title: string };
 } | undefined, locale: Locale): PdfSignature | null {
   if (!signature) return null;
@@ -106,6 +135,7 @@ function toPdfSignature(signature: {
     signedAt: formatPdfDate(signature.signedAt, locale),
     signerName: signature.signer.name,
     signerTitle: signature.signer.title,
+    payloadHash: signature.payloadHash,
   };
 }
 
@@ -144,8 +174,10 @@ export async function getReportForPdf(
             include: {
               deviceSelection: true,
               points: true,
+              readings: true,
             },
           },
+          verificationRows: true,
         },
       },
     },
@@ -155,7 +187,6 @@ export async function getReportForPdf(
   if (actor.role !== "ADMIN" && report.preparedById !== actor.id) return null;
 
   const certificates = report.certificates
-    .filter((certificate) => isPointLayout(certificate.layout))
     .sort(
       (a, b) =>
         CERTIFICATE_CONFIG[a.certificateType].pdfPage -
@@ -182,7 +213,7 @@ export async function getReportForPdf(
             a.tagNumberSnapshot.localeCompare(b.tagNumberSnapshot)
         );
 
-      const columns = selections.map((selection): PdfDeviceColumn => {
+      let columns = selections.map((selection): PdfDeviceColumn => {
         const measurement = measurementBySelectionId.get(selection.id);
         const pointByKind = new Map(
           (measurement?.points ?? []).map((point) => [point.kind, point])
@@ -211,8 +242,33 @@ export async function getReportForPdf(
               asLeftDeviation: str(point?.asLeftDeviation),
             };
           }),
+          readings: [...(measurement?.readings ?? [])]
+            .sort((a, b) => a.sequence - b.sequence)
+            .map((reading) => ({
+              sequence: reading.sequence,
+              value: str(reading.value),
+              target: str(reading.target),
+              deviation: str(reading.deviation),
+              inTolerance: reading.inTolerance,
+            })),
         };
       });
+      if (certificate.layout === CertificateLayout.VERIFICATION) {
+        columns = [
+          {
+            tagNumber: "EXHAUST",
+            description: "Exhaust verification",
+            excluded: false,
+            exclusionReason: null,
+            status:
+              certificate.overallStatus === "PENDING" ? "PENDING" : "PASS",
+            statusReason: null,
+            requiredAdjustment: false,
+            points: [],
+            readings: [],
+          },
+        ];
+      }
 
       const unit = selections[0]?.toleranceUnitSnapshot ?? "";
       const toleranceSelection = selections.find((selection) => selection.included) ?? selections[0];
@@ -224,6 +280,7 @@ export async function getReportForPdf(
 
       return {
         certificateType: certificate.certificateType,
+        layout: certificate.layout,
         title: translate(locale, "certificate.suffix", {
           name: getCertificateLabel(certificate.certificateType, locale),
         }),
@@ -234,6 +291,16 @@ export async function getReportForPdf(
         unit,
         tolerance,
         notes: certificate.notes,
+        params:
+          certificate.params &&
+          typeof certificate.params === "object" &&
+          !Array.isArray(certificate.params)
+            ? Object.fromEntries(
+                Object.entries(certificate.params).flatMap(([key, value]) =>
+                  typeof value === "string" ? [[key, value]] : []
+                )
+              )
+            : {},
         standard: {
           description: certificate.primaryStandard.descriptionSnapshot,
           manufacturer: certificate.primaryStandard.manufacturerSnapshot,
@@ -244,6 +311,17 @@ export async function getReportForPdf(
           validTo: formatPdfDate(certificate.primaryStandard.calExpiresAtSnapshot, locale),
         },
         columns,
+        verificationRows: [...certificate.verificationRows]
+          .sort((a, b) => a.displayOrder - b.displayOrder)
+          .map((row) => ({
+            motorTag: row.motorTag,
+            description: row.description,
+            rowLabel: row.rowLabel,
+            scfm: str(row.scfm),
+            driveFrequencyHz: str(row.driveFrequencyHz),
+            notApplicable: row.notApplicable,
+            displayOrder: row.displayOrder,
+          })),
         signature: toPdfSignature(certificate.signatures[0], locale),
       };
     });

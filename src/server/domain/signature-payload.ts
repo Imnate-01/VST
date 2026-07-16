@@ -24,6 +24,11 @@ export type SignedMeasurement = {
   requiredAdjustment: boolean;
   correctionMethod: string | null;
   points: SignedPoint[];
+  readings?: Array<{
+    sequence: number;
+    value: string | null;
+    target: string | null;
+  }>;
 };
 
 export type CertificateSignaturePayload = {
@@ -32,7 +37,19 @@ export type CertificateSignaturePayload = {
   certificateType: string;
   overallStatus: string;
   standardSerial: string;
+  /** Observaciones de la sección: se imprimen en la página que se firma. */
+  notes: string | null;
+  params?: unknown;
   measurements: SignedMeasurement[];
+  verificationRows?: Array<{
+    motorTag: string;
+    description: string;
+    rowLabel: string;
+    scfm: string | null;
+    driveFrequencyHz: string | null;
+    notApplicable: boolean;
+    displayOrder: number;
+  }>;
 };
 
 export type ReportSignaturePayload = {
@@ -71,7 +88,22 @@ function canonicalMeasurement(measurement: SignedMeasurement): unknown[] {
     measurement.requiredAdjustment,
     measurement.correctionMethod,
     points.map(canonicalPoint),
+    [...(measurement.readings ?? [])]
+      .sort((a, b) => a.sequence - b.sequence)
+      .map((reading) => [reading.sequence, reading.value, reading.target]),
   ];
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, child]) => [key, canonicalJson(child)])
+    );
+  }
+  return value;
 }
 
 /**
@@ -90,7 +122,20 @@ export function canonicalizePayload(payload: SignaturePayload): string {
       payload.certificateType,
       payload.overallStatus,
       payload.standardSerial,
+      payload.notes,
+      canonicalJson(payload.params ?? null),
       measurements.map(canonicalMeasurement),
+      [...(payload.verificationRows ?? [])]
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .map((row) => [
+          row.motorTag,
+          row.description,
+          row.rowLabel,
+          row.scfm,
+          row.driveFrequencyHz,
+          row.notApplicable,
+          row.displayOrder,
+        ]),
     ]);
   }
 

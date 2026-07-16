@@ -8,6 +8,7 @@ import { prisma } from "@/server/db";
 import { generateReportNumber } from "@/server/domain/report-number";
 import { logAudit } from "@/server/services/audit";
 import {
+  getCertificateConfig,
   getCertificateLayout,
   implementedCertificateTypes,
 } from "@/lib/certificates";
@@ -35,7 +36,9 @@ function requiredCertificateTypes(
     selections.flatMap((selection) => selection.certificateTypesSnapshot)
   );
 
-  return implementedTypes.filter((type) => types.has(type));
+  return implementedTypes.filter(
+    (type) => types.has(type) || getCertificateConfig(type).alwaysRequired
+  );
 }
 
 function dateOnlyUtc(date: Date): Date {

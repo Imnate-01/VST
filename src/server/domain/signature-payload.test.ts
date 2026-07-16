@@ -14,6 +14,7 @@ function certificatePayload(
     certificateType: "VACUUM_PRESSURE",
     overallStatus: "PASS",
     standardSerial: "4792075",
+    notes: null,
     measurements: [
       {
         tagNumber: "1706",
@@ -95,6 +96,14 @@ describe("hashSignaturePayload", () => {
     });
 
     expect(hashSignaturePayload(tampered)).not.toBe(hashSignaturePayload(base));
+  });
+
+  it("cambiar las observaciones cambia el hash", () => {
+    // Las observaciones se imprimen en la página firmada, así que editarlas
+    // después de firmar tiene que invalidar la firma.
+    expect(
+      hashSignaturePayload(certificatePayload({ notes: "Se ajustó el sensor 1706." }))
+    ).not.toBe(hashSignaturePayload(certificatePayload()));
   });
 
   it("produce un sha256 hexadecimal", () => {
