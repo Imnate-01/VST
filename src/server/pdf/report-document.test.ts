@@ -63,6 +63,15 @@ describe("filas de identidad del certificado", () => {
     expect(source).toContain("readingAt(column, sequence)?.inTolerance");
   });
 
+  it("imprime Pass/Fail en la celda evaluada de cada pase", () => {
+    expect(
+      source.match(/label=\{t\("measurement\.passFail"\)\}/g)
+    ).toHaveLength(3);
+    expect(source).toContain(
+      't(inTolerance ? "measurement.pass" : "measurement.fail")'
+    );
+  });
+
   it("identity controla el contenido y strong el estilo", () => {
     // La celda muestra N/A solo si está excluida y NO es fila de identidad.
     expect(source).toContain("column.excluded && !identity ? NA");

@@ -22,8 +22,12 @@ import { Button } from "@/components/ui/button";
 import { SigLogo } from "@/components/brand/sig-logo";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLanguage } from "@/components/language-provider";
+import {
+  clearOfflineSessionData,
+  pendingOfflineOperationCount,
+} from "@/lib/offline/session";
 
-type SessionUser = {
+export type SessionUser = {
   id: string;
   name?: string | null;
   email?: string | null;
@@ -62,6 +66,15 @@ export function AppSidebar({ user }: { user: SessionUser }) {
     { href: "/admin/fillers", label: t("nav.fillersClients"), icon: Building2 },
     { href: "/admin/audit", label: t("nav.audit"), icon: SearchCheck },
   ];
+
+  const handleSignOut = async () => {
+    const pending = await pendingOfflineOperationCount();
+    if (pending > 0 && !window.confirm(t("offline.signOutPendingConfirm"))) {
+      return;
+    }
+    await clearOfflineSessionData();
+    await signOut({ callbackUrl: "/login" });
+  };
 
   return (
     <aside
@@ -164,7 +177,7 @@ export function AppSidebar({ user }: { user: SessionUser }) {
             variant="outline"
             size={collapsed ? "icon" : "sm"}
             className="h-10 w-10 px-0"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => void handleSignOut()}
             aria-label={t("nav.signOut")}
             title={t("nav.signOut")}
           >

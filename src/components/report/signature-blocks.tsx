@@ -1,7 +1,9 @@
 "use client";
 
-import { signCertificate, signReport } from "@/server/actions/signatures";
+import { signReport } from "@/server/actions/signatures";
+import { saveCertificateSignature } from "@/lib/offline/save";
 import { SignatureCapture } from "@/components/report/signature-capture";
+import { useNetworkStatus } from "@/components/offline/network-status-provider";
 import { useLanguage } from "@/components/language-provider";
 
 type ExistingSignature = {
@@ -23,6 +25,7 @@ export function CertificateSignatureBlock({
   blockedReason: string | null;
 }) {
   const { t } = useLanguage();
+  const { online } = useNetworkStatus();
   return (
     <SignatureCapture
       title={t("signature.preparerValidation")}
@@ -30,7 +33,10 @@ export function CertificateSignatureBlock({
       existing={existing}
       blockedReason={blockedReason}
       onSign={(signatureDataUrl) =>
-        signCertificate({ reportId, certificateId, signatureDataUrl })
+        saveCertificateSignature(
+          { reportId, certificateId, signatureDataUrl },
+          online
+        )
       }
     />
   );

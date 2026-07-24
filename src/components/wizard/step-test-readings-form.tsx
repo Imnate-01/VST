@@ -6,7 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { CertificateType, MeasurementStatus } from "@prisma/client";
 import { Check, Clock3, X } from "lucide-react";
-import { upsertTestReadings } from "@/server/actions/measurements";
+import { saveTestReadings } from "@/lib/offline/save";
+import { useNetworkStatus } from "@/components/offline/network-status-provider";
 import {
   getUpsertTestReadingsSchema,
   type UpsertTestReadingsInput,
@@ -87,8 +88,10 @@ export function StepTestReadingsForm({
   onSaved,
 }: Props) {
   const { locale, t } = useLanguage();
+  const { online } = useNetworkStatus();
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [savedOffline, setSavedOffline] = useState(false);
   const [isPending, startTransition] = useTransition();
   const form = useForm<UpsertTestReadingsInput>({
     resolver: zodResolver(getUpsertTestReadingsSchema(locale)),
@@ -128,14 +131,15 @@ export function StepTestReadingsForm({
   function onSubmit(values: UpsertTestReadingsInput) {
     setServerError(null);
     startTransition(async () => {
-      const result = await upsertTestReadings(values);
+      const result = await saveTestReadings(values, online);
       if (result?.ok === false) {
         setServerError(result.message ?? t("common.unexpectedError"));
         return;
       }
       form.reset(values);
+      setSavedOffline(!online);
       if (result?.certificateStatus) onSaved?.(result.certificateStatus);
-      router.refresh();
+      if (online) router.refresh();
       if (result?.certificateStatus !== "PENDING") {
         document
           .getElementById("certificate-signature")
@@ -168,6 +172,12 @@ export function StepTestReadingsForm({
           {serverError && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {serverError}
+            </div>
+          )}
+
+          {savedOffline && (
+            <div className="rounded-md border border-warning/25 bg-warning-muted px-3 py-2 text-xs font-medium text-warning">
+              {t("offline.savedLocally")}
             </div>
           )}
 

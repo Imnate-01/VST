@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { CertificateType } from "@prisma/client";
-import { upsertVerification } from "@/server/actions/measurements";
+import { saveVerification } from "@/lib/offline/save";
+import { useNetworkStatus } from "@/components/offline/network-status-provider";
 import {
   getUpsertVerificationSchema,
   type UpsertVerificationInput,
@@ -42,8 +43,10 @@ export function StepVerificationForm({
   onSaved,
 }: Props) {
   const { locale, t } = useLanguage();
+  const { online } = useNetworkStatus();
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [savedOffline, setSavedOffline] = useState(false);
   const [isPending, startTransition] = useTransition();
   const form = useForm<UpsertVerificationInput>({
     resolver: zodResolver(getUpsertVerificationSchema(locale)),
@@ -59,14 +62,15 @@ export function StepVerificationForm({
   function onSubmit(values: UpsertVerificationInput) {
     setServerError(null);
     startTransition(async () => {
-      const result = await upsertVerification(values);
+      const result = await saveVerification(values, online);
       if (result?.ok === false) {
         setServerError(result.message ?? t("common.unexpectedError"));
         return;
       }
       form.reset(values);
+      setSavedOffline(!online);
       if (result?.certificateStatus) onSaved?.(result.certificateStatus);
-      router.refresh();
+      if (online) router.refresh();
       if (result?.certificateStatus !== "PENDING") {
         document
           .getElementById("certificate-signature")
@@ -110,6 +114,12 @@ export function StepVerificationForm({
           {serverError && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {serverError}
+            </div>
+          )}
+
+          {savedOffline && (
+            <div className="rounded-md border border-warning/25 bg-warning-muted px-3 py-2 text-xs font-medium text-warning">
+              {t("offline.savedLocally")}
             </div>
           )}
 

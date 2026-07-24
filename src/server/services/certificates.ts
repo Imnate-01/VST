@@ -2,32 +2,25 @@ import {
   CertificateLayout,
   CertificateStatus,
   CertificateType,
-  MeasurementStatus,
   PointKind,
   ReportStatus,
   type Prisma,
   type UserRole,
 } from "@prisma/client";
-import { Decimal } from "decimal.js";
 import { prisma } from "@/server/db";
+import { hasCompleteVerificationRows } from "@/server/domain/certificate-completeness";
 import {
-  IndeterminateToleranceError,
-  aggregateCertificateStatus as aggregateOverallStatus,
-  evaluatePointSet,
-  evaluateTestReadings,
-  type MeasurementOverall,
-} from "@/server/domain/calibration";
-import {
-  hasCompleteCertificateMeasurement,
-  hasCompleteTestReadings,
-  hasCompleteVerificationRows,
-} from "@/server/domain/certificate-completeness";
+  aggregateCertificateStatus,
+  calculateMeasurementStatus,
+  calculateTestReadings,
+  decimalToStringOrNull as toPrismaDecimalValue,
+  normalizeTestParams,
+  testTarget,
+} from "@/shared/domain/measurement-status";
 import { getCertificateConfig, isPointLayout } from "@/lib/certificates";
 import { logAudit } from "@/server/services/audit";
 import { revokeCertificateSignatures } from "@/server/services/signatures";
 import type {
-  CertificateMeasurementRowInput,
-  MeasurementPointInput,
   UpsertMeasurementInput,
   UpsertTestReadingsInput,
   UpsertVerificationInput,
@@ -37,14 +30,6 @@ type Actor = {
   id: string;
   role: UserRole;
 };
-
-function toDecimalOrNull(value: string | undefined): Decimal | null {
-  return value ? new Decimal(value) : null;
-}
-
-function toPrismaDecimalValue(value: Decimal | null): string | null {
-  return value ? value.toString() : null;
-}
 
 async function getEditableReport(reportId: string, actor: Actor) {
   const report = await prisma.report.findUnique({
@@ -98,208 +83,6 @@ export async function getCertificateForWizard(
   });
 
   return { report, certificate, deviceSelections, measurements };
-}
-
-export type CalculatedPoint = {
-  kind: PointKind;
-  conditionValue: Decimal | null;
-  targetNominal: Decimal | null;
-  asFoundReference: Decimal | null;
-  asFoundReading: Decimal | null;
-  asFoundDeviation: Decimal | null;
-  asFoundInTolerance: boolean | null;
-  asLeftReference: Decimal | null;
-  asLeftReading: Decimal | null;
-  asLeftDeviation: Decimal | null;
-  asLeftInTolerance: boolean | null;
-};
-
-export type CalculatedMeasurement = {
-  points: CalculatedPoint[];
-  status: MeasurementStatus;
-  statusReason: string | null;
-  requiredAdjustment: boolean;
-};
-
-function rawPoint(input: MeasurementPointInput): CalculatedPoint {
-  const targetNominal = toDecimalOrNull(input.targetNominal);
-  return {
-    kind: input.kind,
-    conditionValue: toDecimalOrNull(input.conditionValue),
-    targetNominal,
-    // Las columnas se conservan para compatibilidad histórica. Desde ahora el
-    // objetivo nominal es la referencia de ambos pases.
-    asFoundReference: targetNominal,
-    asFoundReading: toDecimalOrNull(input.asFoundReading),
-    asFoundDeviation: null,
-    asFoundInTolerance: null,
-    asLeftReference: targetNominal,
-    asLeftReading: toDecimalOrNull(input.asLeftReading),
-    asLeftDeviation: null,
-    asLeftInTolerance: null,
-  };
-}
-
-function pendingMeasurement(
-  points: CalculatedPoint[],
-  statusReason: string
-): CalculatedMeasurement {
-  return {
-    points,
-    status: MeasurementStatus.PENDING,
-    statusReason,
-    requiredAdjustment: false,
-  };
-}
-
-/** Un pase está completo con reference + reading, y parcial con solo uno. */
-function passState(reference: Decimal | null, reading: Decimal | null) {
-  return {
-    complete: Boolean(reference && reading),
-    partial: Boolean(reference) !== Boolean(reading),
-  };
-}
-
-/**
- * Calcula el estado de un dispositivo a partir de sus puntos.
- *
- * El Pass/Fail se decide sobre el pase As Left cuando fue capturado. Un As Found
- * fuera de tolerancia no reprueba: significa que el instrumento derivó y hubo
- * que ajustarlo. deviation = reading - reference. Ver el motor de dominio.
- */
-export function calculateMeasurementStatus(params: {
-  certificateType: CertificateType;
-  input: CertificateMeasurementRowInput;
-  toleranceValue: Decimal | string;
-  toleranceIsPercent: boolean;
-}): CalculatedMeasurement {
-  const rawPoints = params.input.points.map(rawPoint);
-
-  if (!hasCompleteCertificateMeasurement(params.certificateType, params.input.points)) {
-    return pendingMeasurement(
-      rawPoints,
-      "Completa todos los puntos y campos de medición antes de firmar"
-    );
-  }
-
-  const passes = rawPoints.map((point) => ({
-    found: passState(point.asFoundReference, point.asFoundReading),
-    left: passState(point.asLeftReference, point.asLeftReading),
-  }));
-
-  const anyComplete = passes.some((p) => p.found.complete || p.left.complete);
-  const anyPartial = passes.some((p) => p.found.partial || p.left.partial);
-
-  if (!anyComplete && !anyPartial) {
-    return pendingMeasurement(rawPoints, "Sin mediciones capturadas");
-  }
-
-  if (anyPartial) {
-    return pendingMeasurement(
-      rawPoints,
-      "En algún pase falta el objetivo nominal o la lectura del UUT"
-    );
-  }
-
-  const toleranceValue = params.toleranceValue.toString();
-
-  let evaluated;
-  try {
-    evaluated = evaluatePointSet(
-      rawPoints.map((point) => ({
-        kind: point.kind,
-        input: {
-          targetNominal: point.targetNominal,
-          asFound:
-            point.asFoundReference && point.asFoundReading
-              ? { reference: point.asFoundReference, reading: point.asFoundReading }
-              : null,
-          asLeft:
-            point.asLeftReference && point.asLeftReading
-              ? { reference: point.asLeftReference, reading: point.asLeftReading }
-              : null,
-          toleranceValue,
-          toleranceIsPercent: params.toleranceIsPercent,
-        },
-      }))
-    );
-  } catch (error) {
-    if (error instanceof IndeterminateToleranceError) {
-      return pendingMeasurement(rawPoints, error.message);
-    }
-    throw error;
-  }
-
-  const resultByKind = new Map(
-    evaluated.points.map((point) => [point.kind, point.result])
-  );
-
-  const points: CalculatedPoint[] = rawPoints.map((point) => {
-    const result = resultByKind.get(point.kind);
-    if (!result) return point;
-
-    return {
-      ...point,
-      asFoundDeviation: result.asFound?.deviation ?? null,
-      asFoundInTolerance: result.asFound?.inTolerance ?? null,
-      asLeftDeviation: result.asLeft?.deviation ?? null,
-      asLeftInTolerance: result.asLeft?.inTolerance ?? null,
-    };
-  });
-
-  const failed = evaluated.overall === "fail";
-
-  return {
-    points,
-    status: failed ? MeasurementStatus.FAIL : MeasurementStatus.PASS,
-    statusReason: buildStatusReason({
-      failed,
-      requiredAdjustment: evaluated.requiredAdjustment,
-    }),
-    requiredAdjustment: evaluated.requiredAdjustment,
-  };
-}
-
-function buildStatusReason(params: {
-  failed: boolean;
-  requiredAdjustment: boolean;
-}): string | null {
-  if (params.failed) {
-    return params.requiredAdjustment
-      ? "As found fuera de tolerancia y el As Left sigue fuera de tolerancia"
-      : "As Left fuera de tolerancia";
-  }
-
-  return params.requiredAdjustment
-    ? "As Found fuera de tolerancia; ajustado y verificado dentro de tolerancia"
-    : null;
-}
-
-const MEASUREMENT_TO_OVERALL: Record<MeasurementStatus, MeasurementOverall | "pending"> = {
-  [MeasurementStatus.PENDING]: "pending",
-  [MeasurementStatus.PASS]: "pass",
-  [MeasurementStatus.FAIL]: "fail",
-  [MeasurementStatus.NA]: "na",
-};
-
-const OVERALL_TO_CERTIFICATE: Record<
-  ReturnType<typeof aggregateOverallStatus>,
-  CertificateStatus
-> = {
-  pending: CertificateStatus.PENDING,
-  pass: CertificateStatus.PASS,
-  fail: CertificateStatus.FAIL,
-  mixed: CertificateStatus.MIXED,
-};
-
-export function aggregateCertificateStatus(
-  statuses: MeasurementStatus[]
-): CertificateStatus {
-  const overall = aggregateOverallStatus(
-    statuses.map((status) => MEASUREMENT_TO_OVERALL[status])
-  );
-
-  return OVERALL_TO_CERTIFICATE[overall];
 }
 
 async function recalculateCertificateStatus(certificateId: string, userId: string) {
@@ -471,41 +254,6 @@ export async function upsertCertificateMeasurement(
   return recalculateCertificateStatus(certificate.id, actor.id);
 }
 
-type StoredTestParams = {
-  meteringRate?: string;
-  durationMinutes?: string;
-  targetWeight?: string;
-  material: string;
-};
-
-function normalizeTestParams(
-  input: UpsertTestReadingsInput["params"]
-): StoredTestParams {
-  return {
-    ...(input.meteringRate ? { meteringRate: input.meteringRate } : {}),
-    ...(input.durationMinutes ? { durationMinutes: input.durationMinutes } : {}),
-    ...(input.targetWeight ? { targetWeight: input.targetWeight } : {}),
-    material: input.material?.trim() || "Minimum 34% Hydrogen Peroxide",
-  };
-}
-
-function testTarget(
-  certificateType: CertificateType,
-  params: StoredTestParams
-): Decimal | null {
-  if (certificateType === CertificateType.ULTRASONIC) {
-    if (!params.targetWeight) return null;
-    const target = new Decimal(params.targetWeight);
-    return target.gt(0) ? target : null;
-  }
-
-  if (!params.meteringRate || !params.durationMinutes) return null;
-  const target = new Decimal(params.meteringRate).times(
-    params.durationMinutes
-  );
-  return target.gt(0) ? target : null;
-}
-
 export async function upsertCertificateTestReadings(
   actor: Actor,
   input: UpsertTestReadingsInput
@@ -552,72 +300,23 @@ export async function upsertCertificateTestReadings(
     throw new Error("Una medición no pertenece a este reporte o certificado.");
   }
 
-  const calculated = input.measurements.map((measurementInput) => {
-    const selection = selectionById.get(measurementInput.deviceSelectionId);
-    if (!selection) {
-      throw new Error("Dispositivo inválido para este certificado.");
-    }
-
-    const readings = [...measurementInput.readings].sort(
-      (a, b) => a.sequence - b.sequence
-    );
-    const expectedSequences = Array.from(
-      { length: expectedCount },
-      (_, index) => index + 1
-    );
-    if (
-      readings.length !== expectedCount ||
-      readings.some(
-        (reading, index) => reading.sequence !== expectedSequences[index]
-      )
-    ) {
-      throw new Error(
-        `El certificado ${config.label} requiere ${expectedCount} corridas.`
-      );
-    }
-
-    const evaluated = target
-      ? evaluateTestReadings({
-          target,
-          readings: readings.map((reading) => reading.value),
-          toleranceValue: selection.toleranceValueSnapshot.toString(),
-          toleranceIsPercent: selection.toleranceIsPercentSnapshot,
-        })
-      : null;
-    const complete = hasCompleteTestReadings(
-      expectedCount,
-      readings.map((reading) => ({
-        value: reading.value,
-        target: target?.toString(),
-      }))
-    );
-    const failed = complete && evaluated?.overall === "fail";
-
-    return {
-      selection,
-      notes: measurementInput.notes?.trim() || null,
-      status: !complete
-        ? MeasurementStatus.PENDING
-        : failed
-          ? MeasurementStatus.FAIL
-          : MeasurementStatus.PASS,
-      statusReason: !target
-        ? "Falta el objetivo de la prueba"
-        : !complete
-          ? "Completa todas las corridas antes de firmar"
-          : failed
-            ? "Una o más corridas están fuera de tolerancia"
-            : null,
-      readings: readings.map((reading, index) => ({
-        sequence: reading.sequence,
-        value: reading.value || null,
-        target: target?.toString() ?? null,
-        deviation:
-          evaluated?.readings[index]?.deviation?.toString() ?? null,
-        inTolerance:
-          evaluated?.readings[index]?.inTolerance ?? null,
-      })),
-    };
+  const calculated = calculateTestReadings({
+    certificateType: certificate.certificateType,
+    expectedCount,
+    target,
+    measurements: input.measurements.map((measurementInput) => {
+      const selection = selectionById.get(measurementInput.deviceSelectionId);
+      if (!selection) {
+        throw new Error("Dispositivo inválido para este certificado.");
+      }
+      return {
+        deviceSelectionId: measurementInput.deviceSelectionId,
+        notes: measurementInput.notes,
+        readings: measurementInput.readings,
+        toleranceValue: selection.toleranceValueSnapshot.toString(),
+        toleranceIsPercent: selection.toleranceIsPercentSnapshot,
+      };
+    }),
   });
 
   const revoked = await prisma.$transaction(async (tx) => {
@@ -633,7 +332,7 @@ export async function upsertCertificateTestReadings(
         where: {
           certificateId_deviceSelectionId: {
             certificateId: certificate.id,
-            deviceSelectionId: result.selection.id,
+            deviceSelectionId: result.deviceSelectionId,
           },
         },
         update: {
@@ -645,7 +344,7 @@ export async function upsertCertificateTestReadings(
         },
         create: {
           certificateId: certificate.id,
-          deviceSelectionId: result.selection.id,
+          deviceSelectionId: result.deviceSelectionId,
           status: result.status,
           statusReason: result.statusReason,
           notes: result.notes,

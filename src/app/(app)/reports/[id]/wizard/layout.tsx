@@ -6,6 +6,9 @@ import { getReportForWizard } from "@/server/services/reports";
 import { getReportProgress } from "@/server/services/report-progress";
 import { ReportStatusBadge } from "@/components/report/report-status-badge";
 import { WizardNav, type WizardNavProgress } from "@/components/wizard/wizard-nav";
+import { DownloadForOfflineButton } from "@/components/offline/download-for-offline-button";
+import { SyncStateBadge } from "@/components/offline/sync-state-badge";
+import { SyncConflictPanel } from "@/components/offline/sync-conflict-panel";
 import { getTranslations } from "@/lib/i18n-server";
 import { formatDateInput } from "@/lib/utils";
 
@@ -55,6 +58,10 @@ export default async function ReportWizardLayout({ children, params }: Props) {
             {data.report.reportNumber}
           </h1>
           <ReportStatusBadge status="DRAFT" label={t("reports.status.draft")} />
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <SyncStateBadge reportId={id} />
+            <DownloadForOfflineButton reportId={id} compact />
+          </div>
         </div>
 
         <dl className="mt-6 grid max-w-3xl gap-x-10 gap-y-4 text-sm sm:grid-cols-3">
@@ -80,7 +87,10 @@ export default async function ReportWizardLayout({ children, params }: Props) {
       </header>
 
       <WizardNav reportId={id} progress={navProgress} />
-      <div className="mx-auto w-full max-w-6xl pt-10">{children}</div>
+      <div className="mx-auto w-full max-w-6xl pt-10">
+        <SyncConflictPanel reportId={id} />
+        {children}
+      </div>
     </div>
   );
 }

@@ -15,6 +15,11 @@ dist/
 tmp/
 next-env.d.ts
 *.tsbuildinfo
+
+# Serwist / PWA service worker generado en build
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
 coverage/
 .turbo/
 output/

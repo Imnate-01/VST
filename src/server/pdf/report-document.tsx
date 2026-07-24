@@ -1065,6 +1065,10 @@ function CertificatePage({
     );
   const pointOf = (column: PdfDeviceColumn, kind: PointKind) =>
     column.points.find((point) => point.kind === kind) ?? null;
+  const resultText = (inTolerance: boolean | null | undefined) =>
+    inTolerance === null || inTolerance === undefined
+      ? null
+      : t(inTolerance ? "measurement.pass" : "measurement.fail");
 
   return (
     <Page size="LETTER" style={styles.page}>
@@ -1146,6 +1150,17 @@ function CertificatePage({
                 }
               />
             )}
+            <DataRow
+              label={t("measurement.passFail")}
+              locale={locale}
+              columns={columns}
+              pick={(c) =>
+                resultText(pointOf(c, kind)?.asFoundInTolerance)
+              }
+              tone={(c) =>
+                toleranceTone(pointOf(c, kind)?.asFoundInTolerance)
+              }
+            />
 
             <SubHeader label={t("pdf.asLeft")} span={span} />
             <DataRow
@@ -1169,6 +1184,17 @@ function CertificatePage({
                 }
               />
             )}
+            <DataRow
+              label={t("measurement.passFail")}
+              locale={locale}
+              columns={columns}
+              pick={(c) =>
+                resultText(pointOf(c, kind)?.asLeftInTolerance)
+              }
+              tone={(c) =>
+                toleranceTone(pointOf(c, kind)?.asLeftInTolerance)
+              }
+            />
           </React.Fragment>
         ))}
         <DataRow
@@ -1294,6 +1320,10 @@ function TestReadingsPage({
     certificate.certificateType === "ULTRASONIC";
   const readingAt = (column: PdfDeviceColumn, sequence: number) =>
     column.readings.find((reading) => reading.sequence === sequence);
+  const resultText = (inTolerance: boolean | null | undefined) =>
+    inTolerance === null || inTolerance === undefined
+      ? null
+      : t(inTolerance ? "measurement.pass" : "measurement.fail");
   const testCount = Math.max(
     2,
     ...certificate.columns.map((column) => column.readings.length)
@@ -1399,6 +1429,17 @@ function TestReadingsPage({
                 columns={certificate.columns}
                 pick={(column) =>
                   readingAt(column, sequence)?.deviation ?? null
+                }
+                tone={(column) =>
+                  toleranceTone(readingAt(column, sequence)?.inTolerance)
+                }
+              />
+              <DataRow
+                label={t("measurement.passFail")}
+                locale={locale}
+                columns={certificate.columns}
+                pick={(column) =>
+                  resultText(readingAt(column, sequence)?.inTolerance)
                 }
                 tone={(column) =>
                   toleranceTone(readingAt(column, sequence)?.inTolerance)

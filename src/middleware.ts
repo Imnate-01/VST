@@ -9,7 +9,9 @@ export default auth((req) => {
   const { pathname } = req.nextUrl;
 
   const isPublicRoute =
-    pathname === "/login" || pathname.startsWith("/api/auth");
+    pathname === "/login" ||
+    pathname === "/offline" ||
+    pathname.startsWith("/api/auth");
 
   if (!isLoggedIn && !isPublicRoute) {
     const loginUrl = new URL("/login", req.nextUrl);
@@ -25,5 +27,10 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|gif|webp)$).*)"],
+  // Se excluyen assets estáticos y los archivos de la PWA (manifest y service
+  // worker) para que sean accesibles sin sesión; de lo contrario el middleware
+  // los redirige a /login y el navegador no puede instalar ni registrar el SW.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|swe-worker-.*|workbox-.*|.*\\.(?:png|jpg|jpeg|svg|gif|webp)$).*)",
+  ],
 };
