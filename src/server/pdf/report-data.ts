@@ -5,6 +5,7 @@ import {
   type CertificateType,
   type UserRole,
 } from "@prisma/client";
+import { Decimal } from "decimal.js";
 import { prisma } from "@/server/db";
 import {
   CERTIFICATE_CONFIG,
@@ -12,11 +13,56 @@ import {
   getConditionLabel,
 } from "@/lib/certificates";
 import { DEFAULT_LOCALE, translate, type Locale } from "@/lib/i18n";
+import { resolveToleranceAbsolute } from "@/server/domain/calibration";
 
 type Actor = { id: string; role: UserRole };
 
 function str(value: { toString(): string } | null | undefined): string | null {
   return value ? value.toString() : null;
+}
+
+type DerivableValue = { toString(): string } | string | null | undefined;
+
+/**
+ * Calcula los valores derivados que necesita el PDF cuando un reporte histórico
+ * tiene objetivo y lectura, pero no guardó deviation/inTolerance.
+ */
+export function derivePdfPass(params: {
+  reference?: DerivableValue;
+  target?: DerivableValue;
+  reading?: DerivableValue;
+  toleranceValue: DerivableValue;
+  toleranceIsPercent: boolean;
+}): { deviation: string | null; inTolerance: boolean | null } {
+  const reference = params.reference ?? params.target;
+  if (
+    reference === null ||
+    reference === undefined ||
+    params.reading === null ||
+    params.reading === undefined ||
+    params.toleranceValue === null ||
+    params.toleranceValue === undefined
+  ) {
+    return { deviation: null, inTolerance: null };
+  }
+
+  try {
+    const referenceDecimal = new Decimal(reference.toString());
+    const readingDecimal = new Decimal(params.reading.toString());
+    const toleranceAbsolute = resolveToleranceAbsolute(
+      referenceDecimal,
+      new Decimal(params.toleranceValue.toString()),
+      params.toleranceIsPercent
+    );
+    const deviation = readingDecimal.minus(referenceDecimal);
+
+    return {
+      deviation: deviation.toString(),
+      inTolerance: deviation.abs().lte(toleranceAbsolute),
+    };
+  } catch {
+    return { deviation: null, inTolerance: null };
+  }
 }
 
 function formatPdfDate(date: Date, locale: Locale): string {
@@ -233,6 +279,20 @@ export async function getReportForPdf(
           notes: measurement?.notes ?? null,
           points: config.pointKinds.map((kind) => {
             const point = pointByKind.get(kind);
+            const asFound = derivePdfPass({
+              reference: point?.asFoundReference,
+              target: point?.targetNominal,
+              reading: point?.asFoundReading,
+              toleranceValue: selection.toleranceValueSnapshot,
+              toleranceIsPercent: selection.toleranceIsPercentSnapshot,
+            });
+            const asLeft = derivePdfPass({
+              reference: point?.asLeftReference,
+              target: point?.targetNominal,
+              reading: point?.asLeftReading,
+              toleranceValue: selection.toleranceValueSnapshot,
+              toleranceIsPercent: selection.toleranceIsPercentSnapshot,
+            });
 
             return {
               kind,
@@ -240,23 +300,37 @@ export async function getReportForPdf(
               targetNominal: str(point?.targetNominal),
               asFoundReference: str(point?.asFoundReference),
               asFoundReading: str(point?.asFoundReading),
-              asFoundDeviation: str(point?.asFoundDeviation),
-              asFoundInTolerance: point?.asFoundInTolerance ?? null,
+              asFoundDeviation:
+                str(point?.asFoundDeviation) ?? asFound.deviation,
+              asFoundInTolerance:
+                point?.asFoundInTolerance ?? asFound.inTolerance,
               asLeftReference: str(point?.asLeftReference),
               asLeftReading: str(point?.asLeftReading),
-              asLeftDeviation: str(point?.asLeftDeviation),
-              asLeftInTolerance: point?.asLeftInTolerance ?? null,
+              asLeftDeviation:
+                str(point?.asLeftDeviation) ?? asLeft.deviation,
+              asLeftInTolerance:
+                point?.asLeftInTolerance ?? asLeft.inTolerance,
             };
           }),
           readings: [...(measurement?.readings ?? [])]
             .sort((a, b) => a.sequence - b.sequence)
-            .map((reading) => ({
-              sequence: reading.sequence,
-              value: str(reading.value),
-              target: str(reading.target),
-              deviation: str(reading.deviation),
-              inTolerance: reading.inTolerance,
-            })),
+            .map((reading) => {
+              const evaluated = derivePdfPass({
+                reference: reading.target,
+                reading: reading.value,
+                toleranceValue: selection.toleranceValueSnapshot,
+                toleranceIsPercent: selection.toleranceIsPercentSnapshot,
+              });
+
+              return {
+                sequence: reading.sequence,
+                value: str(reading.value),
+                target: str(reading.target),
+                deviation: str(reading.deviation) ?? evaluated.deviation,
+                inTolerance:
+                  reading.inTolerance ?? evaluated.inTolerance,
+              };
+            }),
         };
       });
       if (certificate.layout === CertificateLayout.VERIFICATION) {

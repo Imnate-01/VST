@@ -23,10 +23,7 @@ export type CertificateConfig = {
   pointKinds: readonly PointKind[];
   /** Sustantivo de la magnitud medida, para los rótulos del formulario. */
   measuredQuantity: string;
-  /**
-   * EOL Flow y VAC Flow no imprimen la fila de deviation en el PDF original,
-   * aunque la calculamos igual.
-   */
+  /** Indica si la tabla del PDF imprime la desviación calculada. */
   showDeviation: boolean;
   /** Rótulo de la condición de ensayo (layout SETPOINT). */
   conditionLabel?: string;
@@ -98,7 +95,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     pdfPage: 8,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "flow",
-    showDeviation: false,
+    showDeviation: true,
     implemented: true,
   },
   [CertificateType.VAC_FLOW]: {
@@ -108,7 +105,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     pdfPage: 9,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "flow",
-    showDeviation: false,
+    showDeviation: true,
     implemented: true,
   },
   [CertificateType.HUMIDITY]: {
