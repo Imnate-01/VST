@@ -301,6 +301,7 @@ model CertificateMeasurement {
   id                String @id @default(cuid())
   certificateId     String
   deviceSelectionId String
+  notes             String?
 
   /// Método de corrección aplicado. El certificado de Temperature lo rotula
   /// "Correction" y admite valores como "Internal".
@@ -394,6 +395,7 @@ model VerificationRow {
   driveFrequencyHz Decimal? @db.Decimal(10, 4)
   notApplicable    Boolean  @default(false)
   displayOrder     Int
+  notes            String?
 
   certificate Certificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
 

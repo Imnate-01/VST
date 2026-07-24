@@ -33,9 +33,11 @@ export type PdfPoint = {
   asFoundReference: string | null;
   asFoundReading: string | null;
   asFoundDeviation: string | null;
+  asFoundInTolerance: boolean | null;
   asLeftReference: string | null;
   asLeftReading: string | null;
   asLeftDeviation: string | null;
+  asLeftInTolerance: boolean | null;
 };
 
 export type PdfDeviceColumn = {
@@ -47,6 +49,7 @@ export type PdfDeviceColumn = {
   status: string;
   statusReason: string | null;
   requiredAdjustment: boolean;
+  notes: string | null;
   points: PdfPoint[];
   readings: Array<{
     sequence: number;
@@ -79,7 +82,6 @@ export type PdfCertificate = {
   conditionLabel: string | null;
   unit: string;
   tolerance: string;
-  notes: string | null;
   params: Record<string, string>;
   standard: {
     description: string;
@@ -99,6 +101,7 @@ export type PdfCertificate = {
     driveFrequencyHz: string | null;
     notApplicable: boolean;
     displayOrder: number;
+    notes: string | null;
   }>;
   signature: PdfSignature | null;
 };
@@ -227,6 +230,7 @@ export async function getReportForPdf(
           status: measurement?.status ?? "PENDING",
           statusReason: measurement?.statusReason ?? null,
           requiredAdjustment: measurement?.requiredAdjustment ?? false,
+          notes: measurement?.notes ?? null,
           points: config.pointKinds.map((kind) => {
             const point = pointByKind.get(kind);
 
@@ -237,9 +241,11 @@ export async function getReportForPdf(
               asFoundReference: str(point?.asFoundReference),
               asFoundReading: str(point?.asFoundReading),
               asFoundDeviation: str(point?.asFoundDeviation),
+              asFoundInTolerance: point?.asFoundInTolerance ?? null,
               asLeftReference: str(point?.asLeftReference),
               asLeftReading: str(point?.asLeftReading),
               asLeftDeviation: str(point?.asLeftDeviation),
+              asLeftInTolerance: point?.asLeftInTolerance ?? null,
             };
           }),
           readings: [...(measurement?.readings ?? [])]
@@ -264,6 +270,7 @@ export async function getReportForPdf(
               certificate.overallStatus === "PENDING" ? "PENDING" : "PASS",
             statusReason: null,
             requiredAdjustment: false,
+            notes: null,
             points: [],
             readings: [],
           },
@@ -290,7 +297,6 @@ export async function getReportForPdf(
         conditionLabel: getConditionLabel(certificate.certificateType, locale),
         unit,
         tolerance,
-        notes: certificate.notes,
         params:
           certificate.params &&
           typeof certificate.params === "object" &&
@@ -321,6 +327,7 @@ export async function getReportForPdf(
             driveFrequencyHz: str(row.driveFrequencyHz),
             notApplicable: row.notApplicable,
             displayOrder: row.displayOrder,
+            notes: row.notes,
           })),
         signature: toPdfSignature(certificate.signatures[0], locale),
       };

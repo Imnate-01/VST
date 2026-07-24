@@ -21,6 +21,7 @@ function certificatePayload(
         status: "PASS",
         requiredAdjustment: true,
         correctionMethod: null,
+        notes: "Se ajustó el sensor 1706.",
         points: [
           { kind: "LOW", targetNominal: "-5", asFoundReference: "-5", asFoundReading: "-4.8", asLeftReference: "-5", asLeftReading: "-5" },
           { kind: "HIGH", targetNominal: "-25", asFoundReference: "-25", asFoundReading: "-28.8", asLeftReference: "-25", asLeftReading: "-25" },
@@ -31,6 +32,7 @@ function certificatePayload(
         status: "PASS",
         requiredAdjustment: false,
         correctionMethod: null,
+        notes: null,
         points: [{ kind: "HIGH", targetNominal: "-25", asFoundReference: "-25", asFoundReading: "-25", asLeftReference: null, asLeftReading: null }],
       },
     ],
@@ -98,12 +100,16 @@ describe("hashSignaturePayload", () => {
     expect(hashSignaturePayload(tampered)).not.toBe(hashSignaturePayload(base));
   });
 
-  it("cambiar las observaciones cambia el hash", () => {
-    // Las observaciones se imprimen en la página firmada, así que editarlas
-    // después de firmar tiene que invalidar la firma.
-    expect(
-      hashSignaturePayload(certificatePayload({ notes: "Se ajustó el sensor 1706." }))
-    ).not.toBe(hashSignaturePayload(certificatePayload()));
+  it("cambiar las observaciones de un sensor cambia el hash", () => {
+    const base = certificatePayload();
+    const tampered = certificatePayload({
+      measurements: [
+        { ...base.measurements[0]!, notes: "Comentario modificado." },
+        base.measurements[1]!,
+      ],
+    });
+
+    expect(hashSignaturePayload(tampered)).not.toBe(hashSignaturePayload(base));
   });
 
   it("produce un sha256 hexadecimal", () => {

@@ -7,9 +7,7 @@ export type CompletenessPoint = {
   kind: PointKind;
   conditionValue?: PointValue;
   targetNominal?: PointValue;
-  asFoundReference?: PointValue;
   asFoundReading?: PointValue;
-  asLeftReference?: PointValue;
   asLeftReading?: PointValue;
 };
 
@@ -49,9 +47,7 @@ export function hasCompleteCertificateMeasurement(
     return (
       (!config.conditionLabel || hasValue(point.conditionValue)) &&
       hasValue(point.targetNominal) &&
-      hasValue(point.asFoundReference) &&
       hasValue(point.asFoundReading) &&
-      hasValue(point.asLeftReference) &&
       hasValue(point.asLeftReading)
     );
   });

@@ -19,17 +19,13 @@ function getOptionalDecimalStringSchema(locale: Locale) {
 export function getMeasurementPointSchema(locale: Locale) {
   const optionalDecimalStringSchema = getOptionalDecimalStringSchema(locale);
   return z.object({
-  kind: z.nativeEnum(PointKind),
-  /** Condición de ensayo (blower speed) en el layout SETPOINT. */
-  conditionValue: optionalDecimalStringSchema,
-  /** Setpoint nominal apuntado (informativo). */
-  targetNominal: optionalDecimalStringSchema,
-  /** As Found: reference = patrón, reading = UUT. */
-  asFoundReference: optionalDecimalStringSchema,
-  asFoundReading: optionalDecimalStringSchema,
-  /** As Left: reference = patrón, reading = UUT. */
-  asLeftReference: optionalDecimalStringSchema,
-  asLeftReading: optionalDecimalStringSchema,
+    kind: z.nativeEnum(PointKind),
+    /** Condición de ensayo (blower speed) en el layout SETPOINT. */
+    conditionValue: optionalDecimalStringSchema,
+    /** Setpoint nominal; es la referencia usada para calcular la desviación. */
+    targetNominal: optionalDecimalStringSchema,
+    asFoundReading: optionalDecimalStringSchema,
+    asLeftReading: optionalDecimalStringSchema,
   });
 }
 
@@ -37,23 +33,24 @@ export const measurementPointSchema = getMeasurementPointSchema(DEFAULT_LOCALE);
 
 export function getCertificateMeasurementRowSchema(locale: Locale) {
   return z.object({
-  deviceSelectionId: z.string().min(1),
-  correctionMethod: z.string().trim().max(100, translate(locale, "validation.max100")).optional(),
-  points: z
-    .array(getMeasurementPointSchema(locale))
-    .min(1, translate(locale, "validation.pointRequired"))
-    .superRefine((points, ctx) => {
-      const seen = new Set<PointKind>();
-      for (const point of points) {
-        if (seen.has(point.kind)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: translate(locale, "validation.duplicatePoint", { point: point.kind }),
-          });
+    deviceSelectionId: z.string().min(1),
+    correctionMethod: z.string().trim().max(100, translate(locale, "validation.max100")).optional(),
+    notes: z.string().max(2000, translate(locale, "validation.max2000")).optional(),
+    points: z
+      .array(getMeasurementPointSchema(locale))
+      .min(1, translate(locale, "validation.pointRequired"))
+      .superRefine((points, ctx) => {
+        const seen = new Set<PointKind>();
+        for (const point of points) {
+          if (seen.has(point.kind)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: translate(locale, "validation.duplicatePoint", { point: point.kind }),
+            });
+          }
+          seen.add(point.kind);
         }
-        seen.add(point.kind);
-      }
-    }),
+      }),
   });
 }
 
@@ -64,8 +61,6 @@ export function getUpsertMeasurementSchema(locale: Locale) {
   reportId: z.string().min(1),
   certificateId: z.string().min(1),
   certificateType: z.nativeEnum(CertificateType),
-  /** Observaciones de la sección. Se imprimen en su página del PDF. */
-  notes: z.string().max(2000, translate(locale, "validation.max2000")).optional(),
   measurements: z.array(getCertificateMeasurementRowSchema(locale)),
   });
 }
@@ -79,7 +74,6 @@ export function getUpsertTestReadingsSchema(locale: Locale) {
     reportId: z.string().min(1),
     certificateId: z.string().min(1),
     certificateType: z.nativeEnum(CertificateType),
-    notes: z.string().max(2000, translate(locale, "validation.max2000")).optional(),
     params: z.object({
       meteringRate: optionalDecimal,
       durationMinutes: optionalDecimal,
@@ -89,6 +83,7 @@ export function getUpsertTestReadingsSchema(locale: Locale) {
     measurements: z.array(
       z.object({
         deviceSelectionId: z.string().min(1),
+        notes: z.string().max(2000, translate(locale, "validation.max2000")).optional(),
         readings: z
           .array(
             z.object({
@@ -112,7 +107,6 @@ export function getUpsertVerificationSchema(locale: Locale) {
     reportId: z.string().min(1),
     certificateId: z.string().min(1),
     certificateType: z.literal(CertificateType.EXHAUST),
-    notes: z.string().max(2000, translate(locale, "validation.max2000")).optional(),
     rows: z
       .array(
         z.object({
@@ -123,6 +117,7 @@ export function getUpsertVerificationSchema(locale: Locale) {
           driveFrequencyHz: optionalDecimal,
           notApplicable: z.boolean(),
           displayOrder: z.number().int().nonnegative(),
+          notes: z.string().max(2000, translate(locale, "validation.max2000")).optional(),
         })
       )
       .min(1),

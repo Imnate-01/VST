@@ -23,6 +23,7 @@ export type SignedMeasurement = {
   status: string;
   requiredAdjustment: boolean;
   correctionMethod: string | null;
+  notes: string | null;
   points: SignedPoint[];
   readings?: Array<{
     sequence: number;
@@ -49,6 +50,7 @@ export type CertificateSignaturePayload = {
     driveFrequencyHz: string | null;
     notApplicable: boolean;
     displayOrder: number;
+    notes: string | null;
   }>;
 };
 
@@ -87,6 +89,7 @@ function canonicalMeasurement(measurement: SignedMeasurement): unknown[] {
     measurement.status,
     measurement.requiredAdjustment,
     measurement.correctionMethod,
+    measurement.notes,
     points.map(canonicalPoint),
     [...(measurement.readings ?? [])]
       .sort((a, b) => a.sequence - b.sequence)
@@ -135,6 +138,7 @@ export function canonicalizePayload(payload: SignaturePayload): string {
           row.driveFrequencyHz,
           row.notApplicable,
           row.displayOrder,
+          row.notes,
         ]),
     ]);
   }

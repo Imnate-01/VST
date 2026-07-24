@@ -9,9 +9,7 @@ import {
 const completePoint = {
   kind: PointKind.LOW,
   targetNominal: "40",
-  asFoundReference: "40",
   asFoundReading: "39.8",
-  asLeftReference: "40",
   asLeftReading: "40",
 };
 

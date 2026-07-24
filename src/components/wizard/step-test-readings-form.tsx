@@ -332,22 +332,28 @@ export function StepTestReadingsForm({
                       );
                     })}
                   </div>
+                  <div className="border-t px-4 py-4">
+                    <label
+                      htmlFor={`test-notes-${measurementIndex}`}
+                      className="text-sm font-semibold"
+                    >
+                      {t("certificate.observations")}
+                    </label>
+                    <textarea
+                      id={`test-notes-${measurementIndex}`}
+                      rows={3}
+                      placeholder={t("certificate.observationsPlaceholder")}
+                      className="mt-3 w-full rounded-lg border border-input bg-muted/70 px-3 py-2 text-sm"
+                      {...form.register(
+                        `measurements.${measurementIndex}.notes`
+                      )}
+                    />
+                  </div>
                 </section>
               );
             })}
           </div>
 
-          <section className="rounded-xl border bg-white p-5">
-            <label htmlFor="test-notes" className="text-sm font-semibold">
-              {t("certificate.observations")}
-            </label>
-            <textarea
-              id="test-notes"
-              rows={4}
-              className="mt-3 w-full rounded-lg border border-input bg-muted/70 px-3 py-2 text-sm"
-              {...form.register("notes")}
-            />
-          </section>
         </CardContent>
       </Card>
 

@@ -106,6 +106,7 @@ async function buildCertificatePayload(
       status: measurement.status,
       requiredAdjustment: measurement.requiredAdjustment,
       correctionMethod: measurement.correctionMethod,
+      notes: measurement.notes,
       points: measurement.points.map((point) => ({
         kind: point.kind,
         targetNominal: decimalToString(point.targetNominal),
@@ -128,6 +129,7 @@ async function buildCertificatePayload(
       driveFrequencyHz: decimalToString(row.driveFrequencyHz),
       notApplicable: row.notApplicable,
       displayOrder: row.displayOrder,
+      notes: row.notes,
     })),
   };
 }

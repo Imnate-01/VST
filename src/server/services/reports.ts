@@ -1,7 +1,8 @@
 import {
   CertificateType,
+  Prisma,
   ReportStatus,
-  type Prisma,
+  type DeviceType,
   type UserRole,
 } from "@prisma/client";
 import { prisma } from "@/server/db";
@@ -240,6 +241,89 @@ export async function getDeviceWizardData(reportId: string, actor: Actor) {
   ]);
 
   return { report, devices, selections };
+}
+
+/**
+ * Alta de un sensor faltante desde el checklist del reporte.
+ *
+ * El dispositivo se crea en el catálogo del modelo del Filler, así queda
+ * disponible para los próximos reportes del mismo equipo. Devuelve `null`
+ * cuando el reporte no es editable y `"duplicate"` cuando la etiqueta ya existe
+ * para ese modelo (la unique key es modelId + tagNumber).
+ */
+export async function createChecklistDevice(
+  actor: Actor,
+  input: {
+    reportId: string;
+    tagNumber: string;
+    description: string;
+    deviceType: DeviceType;
+    toleranceValue: string;
+    toleranceUnit: string;
+    toleranceIsPercent: boolean;
+    certificateTypes: CertificateType[];
+  }
+) {
+  const report = await getEditableReport(input.reportId, actor);
+  if (!report) {
+    throw new Error("Reporte no encontrado o no editable.");
+  }
+
+  const certificateTypes = implementedTypes.filter((type) =>
+    input.certificateTypes.includes(type)
+  );
+  if (certificateTypes.length === 0) {
+    throw new Error("El sensor debe tener al menos un certificado implementado.");
+  }
+
+  const modelId = report.filler.modelId;
+  const tagNumber = input.tagNumber.trim();
+
+  const existing = await prisma.deviceCatalog.findUnique({
+    where: { modelId_tagNumber: { modelId, tagNumber } },
+    select: { id: true },
+  });
+  if (existing) return "duplicate" as const;
+
+  const last = await prisma.deviceCatalog.aggregate({
+    where: { modelId },
+    _max: { displayOrder: true },
+  });
+
+  const device = await prisma.deviceCatalog.create({
+    data: {
+      modelId,
+      tagNumber,
+      description: input.description.trim(),
+      deviceType: input.deviceType,
+      toleranceValue: new Prisma.Decimal(input.toleranceValue),
+      toleranceUnit: input.toleranceUnit.trim(),
+      toleranceIsPercent: input.toleranceIsPercent,
+      certificateTypes,
+      displayOrder: (last._max.displayOrder ?? 0) + 1,
+      active: true,
+    },
+  });
+
+  await logAudit({
+    entityType: "DeviceCatalog",
+    entityId: device.id,
+    action: "create",
+    userId: actor.id,
+    changes: {
+      modelId,
+      tagNumber: device.tagNumber,
+      description: device.description,
+      deviceType: device.deviceType,
+      toleranceValue: device.toleranceValue.toString(),
+      toleranceUnit: device.toleranceUnit,
+      toleranceIsPercent: device.toleranceIsPercent,
+      certificateTypes: device.certificateTypes,
+      createdFromReportId: report.id,
+    },
+  });
+
+  return device;
 }
 
 export async function syncReportDeviceSelections(

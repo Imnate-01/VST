@@ -177,6 +177,7 @@ export default async function CertificateWizardPage({ params }: Props) {
 
       return {
         deviceSelectionId: selection.id,
+        notes: saved?.notes ?? "",
         readings: Array.from({ length: readingCount }, (_, index) => {
           const sequence = index + 1;
           return {
@@ -222,7 +223,6 @@ export default async function CertificateWizardPage({ params }: Props) {
           reportId: data.report.id,
           certificateId: data.certificate.id,
           certificateType: testType,
-          notes: data.certificate.notes ?? "",
           params,
           measurements: initialMeasurements,
         }}
@@ -241,6 +241,7 @@ export default async function CertificateWizardPage({ params }: Props) {
         rowLabel: "Filling Area Actual Reading",
         notApplicable: false,
         displayOrder: 10,
+        notes: "",
       },
       {
         motorTag: "250",
@@ -248,6 +249,7 @@ export default async function CertificateWizardPage({ params }: Props) {
         rowLabel: "Assembly Area Actual Reading",
         notApplicable: true,
         displayOrder: 20,
+        notes: "",
       },
       {
         motorTag: "255",
@@ -255,6 +257,7 @@ export default async function CertificateWizardPage({ params }: Props) {
         rowLabel: "Filling Area Actual Reading",
         notApplicable: false,
         displayOrder: 30,
+        notes: "",
       },
       {
         motorTag: "255",
@@ -262,6 +265,7 @@ export default async function CertificateWizardPage({ params }: Props) {
         rowLabel: "Assembly Area Actual Reading",
         notApplicable: true,
         displayOrder: 40,
+        notes: "",
       },
       {
         motorTag: "260",
@@ -269,6 +273,7 @@ export default async function CertificateWizardPage({ params }: Props) {
         rowLabel: "Actual Reading",
         notApplicable: false,
         displayOrder: 50,
+        notes: "",
       },
     ];
     const verificationRows =
@@ -283,6 +288,7 @@ export default async function CertificateWizardPage({ params }: Props) {
               driveFrequencyHz: decimalToString(row.driveFrequencyHz),
               notApplicable: row.notApplicable,
               displayOrder: row.displayOrder,
+              notes: row.notes ?? "",
             }))
         : defaultRows.map((row) => ({
             ...row,
@@ -299,7 +305,6 @@ export default async function CertificateWizardPage({ params }: Props) {
           reportId: data.report.id,
           certificateId: data.certificate.id,
           certificateType: CertificateType.EXHAUST,
-          notes: data.certificate.notes ?? "",
           rows: verificationRows,
         }}
         initialReadyToSign={
@@ -322,6 +327,7 @@ export default async function CertificateWizardPage({ params }: Props) {
 
     return {
       deviceSelectionId: selection.id,
+      notes: measurement?.notes ?? "",
       points: config.pointKinds.map((kind) => {
         const saved = savedPointByKind.get(kind);
 
@@ -330,9 +336,7 @@ export default async function CertificateWizardPage({ params }: Props) {
           conditionValue: decimalToString(saved?.conditionValue),
           targetNominal:
             decimalToString(saved?.targetNominal) || defaults[kind] || "",
-          asFoundReference: decimalToString(saved?.asFoundReference),
           asFoundReading: decimalToString(saved?.asFoundReading),
-          asLeftReference: decimalToString(saved?.asLeftReference),
           asLeftReading: decimalToString(saved?.asLeftReading),
         };
       }),
@@ -353,7 +357,6 @@ export default async function CertificateWizardPage({ params }: Props) {
         reportId: data.report.id,
         certificateId: data.certificate.id,
         certificateType,
-        notes: data.certificate.notes ?? "",
         measurements: initialMeasurements,
       }}
       initialReadyToSign={

@@ -192,17 +192,15 @@ function SectionRow({ children }: { children: string }) {
 }
 
 /**
- * Un pase de medición (As Found o As Left): actual reference + UUT reading,
- * acceptance limit, Pass/Fail y deviation. Estructura de la plantilla thermocouple.
+ * Un pase de medición (As Found o As Left): lectura del UUT, límite de
+ * aceptación, Pass/Fail y desviación contra el objetivo nominal.
  */
 function PassBlock({
   title,
   readingLabel,
   deviationLabel,
   base,
-  referenceField,
   readingField,
-  quantity,
   unit,
   acceptanceLimit,
   eval: evaluated,
@@ -212,9 +210,7 @@ function PassBlock({
   readingLabel: string;
   deviationLabel: string;
   base: string;
-  referenceField: string;
   readingField: string;
-  quantity: string;
   unit: string;
   acceptanceLimit: string;
   eval: ReturnType<typeof evalPass>;
@@ -225,17 +221,8 @@ function PassBlock({
     <>
       <SectionRow>{title}</SectionRow>
       <tr className="border-b border-sig-100">
-        <LabelCell>{t("measurement.actualReference", { quantity })}</LabelCell>
-        <td className="w-[42%] p-0">
-          <InputCell
-            registration={register(`${base}.${referenceField}` as never)}
-            placeholder={unit}
-          />
-        </td>
-      </tr>
-      <tr className="border-b border-sig-100">
         <LabelCell>{readingLabel}</LabelCell>
-        <td className="p-0">
+        <td className="w-[42%] p-0">
           <InputCell
             registration={register(`${base}.${readingField}` as never)}
             placeholder={unit}
@@ -292,13 +279,13 @@ function PointTable({
   const quantity = getMeasuredQuantity(certificateType, locale);
 
   const asFound = evalPass({
-    reference: values?.asFoundReference,
+    reference: values?.targetNominal,
     reading: values?.asFoundReading,
     toleranceValue: row.toleranceValue,
     toleranceIsPercent: row.toleranceIsPercent,
   });
   const asLeft = evalPass({
-    reference: values?.asLeftReference,
+    reference: values?.targetNominal,
     reading: values?.asLeftReading,
     toleranceValue: row.toleranceValue,
     toleranceIsPercent: row.toleranceIsPercent,
@@ -359,9 +346,7 @@ function PointTable({
             readingLabel={t("measurement.readingAsFound")}
             deviationLabel={t("measurement.deviationAsFound")}
             base={base}
-            referenceField="asFoundReference"
             readingField="asFoundReading"
-            quantity={quantity}
             unit={unit}
             acceptanceLimit={acceptanceLimit(asFound.toleranceAbsolute)}
             eval={asFound}
@@ -373,9 +358,7 @@ function PointTable({
             readingLabel={t("measurement.readingAsLeft")}
             deviationLabel={t("measurement.deviationAsLeft")}
             base={base}
-            referenceField="asLeftReference"
             readingField="asLeftReading"
-            quantity={quantity}
             unit={unit}
             acceptanceLimit={acceptanceLimit(asLeft.toleranceAbsolute)}
             eval={asLeft}
@@ -555,34 +538,37 @@ export function StepCertificateForm({
                       />
                     ))}
                   </div>
+
+                  <div className="mt-4 border-t pt-4">
+                    <label
+                      htmlFor={`measurement-notes-${measurementIndex}`}
+                      className="text-sm font-semibold text-foreground"
+                    >
+                      {t("certificate.observations")}
+                    </label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t("certificate.observationsDescription")}
+                    </p>
+                    <textarea
+                      id={`measurement-notes-${measurementIndex}`}
+                      rows={3}
+                      placeholder={t("certificate.observationsPlaceholder")}
+                      className="mt-3 w-full rounded-lg border border-input bg-muted/70 px-3 py-2 text-sm outline-none ring-inset transition-colors placeholder:text-muted-foreground hover:bg-muted focus:bg-white focus:ring-2 focus:ring-primary"
+                      {...form.register(`measurements.${measurementIndex}.notes`)}
+                    />
+                    {form.formState.errors.measurements?.[measurementIndex]?.notes && (
+                      <p className="mt-2 text-xs text-destructive">
+                        {
+                          form.formState.errors.measurements[measurementIndex]
+                            ?.notes?.message
+                        }
+                      </p>
+                    )}
+                  </div>
                 </section>
               );
             })}
           </div>
-
-          <section className="rounded-xl border bg-white p-5">
-            <label
-              htmlFor="certificate-notes"
-              className="text-sm font-semibold text-foreground"
-            >
-              {t("certificate.observations")}
-            </label>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("certificate.observationsDescription")}
-            </p>
-            <textarea
-              id="certificate-notes"
-              rows={4}
-              placeholder={t("certificate.observationsPlaceholder")}
-              className="mt-3 w-full rounded-lg border border-input bg-muted/70 px-3 py-2 text-sm outline-none ring-inset transition-colors placeholder:text-muted-foreground hover:bg-muted focus:bg-white focus:ring-2 focus:ring-primary"
-              {...form.register("notes")}
-            />
-            {form.formState.errors.notes && (
-              <p className="mt-2 text-xs text-destructive">
-                {form.formState.errors.notes.message}
-              </p>
-            )}
-          </section>
 
           <p className="text-xs text-muted-foreground">
             {t("measurement.help")}

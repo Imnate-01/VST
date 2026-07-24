@@ -122,15 +122,18 @@ export type CalculatedMeasurement = {
 };
 
 function rawPoint(input: MeasurementPointInput): CalculatedPoint {
+  const targetNominal = toDecimalOrNull(input.targetNominal);
   return {
     kind: input.kind,
     conditionValue: toDecimalOrNull(input.conditionValue),
-    targetNominal: toDecimalOrNull(input.targetNominal),
-    asFoundReference: toDecimalOrNull(input.asFoundReference),
+    targetNominal,
+    // Las columnas se conservan para compatibilidad histórica. Desde ahora el
+    // objetivo nominal es la referencia de ambos pases.
+    asFoundReference: targetNominal,
     asFoundReading: toDecimalOrNull(input.asFoundReading),
     asFoundDeviation: null,
     asFoundInTolerance: null,
-    asLeftReference: toDecimalOrNull(input.asLeftReference),
+    asLeftReference: targetNominal,
     asLeftReading: toDecimalOrNull(input.asLeftReading),
     asLeftDeviation: null,
     asLeftInTolerance: null,
@@ -194,7 +197,7 @@ export function calculateMeasurementStatus(params: {
   if (anyPartial) {
     return pendingMeasurement(
       rawPoints,
-      "En algún pase falta la referencia del patrón o la lectura del UUT"
+      "En algún pase falta el objetivo nominal o la lectura del UUT"
     );
   }
 
@@ -359,26 +362,6 @@ export async function upsertCertificateMeasurement(
     );
   }
 
-  const notes = input.notes?.trim() || null;
-  if (notes !== certificate.notes) {
-    const revoked = await prisma.$transaction(async (tx) => {
-      await tx.certificate.update({ where: { id: certificate.id }, data: { notes } });
-
-      // Las observaciones se imprimen en la página firmada y entran al payload
-      // de la firma: cambiarlas invalida la validación del preparador igual que
-      // cambiar una medición.
-      return revokeCertificateSignatures(tx, certificate.id);
-    });
-
-    await logAudit({
-      entityType: "Certificate",
-      entityId: certificate.id,
-      action: "update_notes",
-      userId: actor.id,
-      changes: { notes, revokedSignatures: revoked },
-    });
-  }
-
   const allowedKinds = new Set<PointKind>(config.pointKinds);
   for (const measurement of input.measurements) {
     for (const point of measurement.points) {
@@ -421,6 +404,7 @@ export async function upsertCertificateMeasurement(
 
     const measurementData = {
       correctionMethod: measurementInput.correctionMethod?.trim() || null,
+      notes: measurementInput.notes?.trim() || null,
       status: calculated.status,
       statusReason: calculated.statusReason,
       requiredAdjustment: calculated.requiredAdjustment,
@@ -611,6 +595,7 @@ export async function upsertCertificateTestReadings(
 
     return {
       selection,
+      notes: measurementInput.notes?.trim() || null,
       status: !complete
         ? MeasurementStatus.PENDING
         : failed
@@ -635,12 +620,10 @@ export async function upsertCertificateTestReadings(
     };
   });
 
-  const notes = input.notes?.trim() || null;
   const revoked = await prisma.$transaction(async (tx) => {
     await tx.certificate.update({
       where: { id: certificate.id },
       data: {
-        notes,
         params: params as Prisma.InputJsonObject,
       },
     });
@@ -656,6 +639,7 @@ export async function upsertCertificateTestReadings(
         update: {
           status: result.status,
           statusReason: result.statusReason,
+          notes: result.notes,
           requiredAdjustment: false,
           correctionMethod: null,
         },
@@ -664,6 +648,7 @@ export async function upsertCertificateTestReadings(
           deviceSelectionId: result.selection.id,
           status: result.status,
           statusReason: result.statusReason,
+          notes: result.notes,
           requiredAdjustment: false,
         },
       });
@@ -721,7 +706,6 @@ export async function upsertCertificateVerification(
     throw new Error("Certificado no encontrado para este reporte.");
   }
 
-  const notes = input.notes?.trim() || null;
   const complete = hasCompleteVerificationRows(input.rows);
   const nextStatus = complete
     ? CertificateStatus.PASS
@@ -743,11 +727,12 @@ export async function upsertCertificateVerification(
           : row.driveFrequencyHz || null,
         notApplicable: row.notApplicable,
         displayOrder: row.displayOrder,
+        notes: row.notes?.trim() || null,
       })),
     });
     await tx.certificate.update({
       where: { id: certificate.id },
-      data: { notes, overallStatus: nextStatus },
+      data: { overallStatus: nextStatus },
     });
 
     return revokeCertificateSignatures(tx, certificate.id);

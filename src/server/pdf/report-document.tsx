@@ -226,6 +226,16 @@ const styles = StyleSheet.create({
     fontFamily: "Courier",
     fontSize: 7,
   },
+  passDataCell: {
+    color: PASS,
+    backgroundColor: PASS_BG,
+    fontFamily: "Courier-Bold",
+  },
+  failDataCell: {
+    color: FAIL,
+    backgroundColor: FAIL_BG,
+    fontFamily: "Courier-Bold",
+  },
   groupRow: { backgroundColor: BRAND_SOFT },
   groupLabel: {
     width: 118,
@@ -929,16 +939,25 @@ const pdfDataLabelKeys: Record<string, MessageKey> = {
   "Tag Number": "pdf.tagNumber",
   Description: "pdf.description",
   "Target reference (nominal)": "pdf.targetReference",
-  "Actual reference": "pdf.actualReference",
   "Reading (As Found)": "pdf.uutAsFound",
   "Reading (As Left)": "pdf.uutAsLeft",
   Deviation: "pdf.deviation",
 };
 
+type CellTone = "pass" | "fail";
+
+function toleranceTone(
+  inTolerance: boolean | null | undefined
+): CellTone | null {
+  if (inTolerance === null || inTolerance === undefined) return null;
+  return inTolerance ? "pass" : "fail";
+}
+
 function DataRow({
   label,
   columns,
   pick,
+  tone,
   zebra,
   strong,
   locale,
@@ -954,6 +973,7 @@ function DataRow({
   label: string;
   columns: PdfDeviceColumn[];
   pick: (column: PdfDeviceColumn) => string | null;
+  tone?: (column: PdfDeviceColumn) => CellTone | null;
   zebra?: boolean;
   strong?: boolean;
   identity?: boolean;
@@ -965,18 +985,23 @@ function DataRow({
   return (
     <View style={[styles.row, zebra ? styles.rowZebra : {}]}>
       <Text style={styles.labelCell}>{translatedLabel}</Text>
-      {columns.map((column, index) => (
-        <Text
-          key={column.tagNumber}
-          style={[
-            index === columns.length - 1 ? styles.dataCellLast : styles.dataCell,
-            strong ? styles.identity : {},
-            column.excluded ? styles.excluded : {},
-          ]}
-        >
-          {column.excluded && !identity ? NA : (pick(column) ?? EMPTY)}
-        </Text>
-      ))}
+      {columns.map((column, index) => {
+        const cellTone = column.excluded ? null : tone?.(column);
+        return (
+          <Text
+            key={column.tagNumber}
+            style={[
+              index === columns.length - 1 ? styles.dataCellLast : styles.dataCell,
+              strong ? styles.identity : {},
+              cellTone === "pass" ? styles.passDataCell : {},
+              cellTone === "fail" ? styles.failDataCell : {},
+              column.excluded ? styles.excluded : {},
+            ]}
+          >
+            {column.excluded && !identity ? NA : (pick(column) ?? EMPTY)}
+          </Text>
+        );
+      })}
     </View>
   );
 }
@@ -1101,16 +1126,13 @@ function CertificatePage({
 
             <SubHeader label={t("pdf.asFound")} span={span} />
             <DataRow
-              label="Actual reference"
-              locale={locale}
-              columns={columns}
-              pick={(c) => pointOf(c, kind)?.asFoundReference ?? null}
-            />
-            <DataRow
               label="Reading (As Found)"
               locale={locale}
               columns={columns}
               pick={(c) => pointOf(c, kind)?.asFoundReading ?? null}
+              tone={(c) =>
+                toleranceTone(pointOf(c, kind)?.asFoundInTolerance)
+              }
               zebra
             />
             {certificate.showDeviation && (
@@ -1119,21 +1141,21 @@ function CertificatePage({
                 locale={locale}
                 columns={columns}
                 pick={(c) => pointOf(c, kind)?.asFoundDeviation ?? null}
+                tone={(c) =>
+                  toleranceTone(pointOf(c, kind)?.asFoundInTolerance)
+                }
               />
             )}
 
             <SubHeader label={t("pdf.asLeft")} span={span} />
             <DataRow
-              label="Actual reference"
-              locale={locale}
-              columns={columns}
-              pick={(c) => pointOf(c, kind)?.asLeftReference ?? null}
-            />
-            <DataRow
               label="Reading (As Left)"
               locale={locale}
               columns={columns}
               pick={(c) => pointOf(c, kind)?.asLeftReading ?? null}
+              tone={(c) =>
+                toleranceTone(pointOf(c, kind)?.asLeftInTolerance)
+              }
               zebra
             />
             {certificate.showDeviation && (
@@ -1142,10 +1164,20 @@ function CertificatePage({
                 locale={locale}
                 columns={columns}
                 pick={(c) => pointOf(c, kind)?.asLeftDeviation ?? null}
+                tone={(c) =>
+                  toleranceTone(pointOf(c, kind)?.asLeftInTolerance)
+                }
               />
             )}
           </React.Fragment>
         ))}
+        <DataRow
+          label={t("pdf.observations")}
+          locale={locale}
+          columns={columns}
+          pick={(column) => column.notes}
+          zebra
+        />
       </View>
 
       {issues.length > 0 && (
@@ -1161,11 +1193,6 @@ function CertificatePage({
           </Text>
         </View>
       )}
-
-      <View style={styles.certObservations}>
-        <Text style={styles.blockLabel}>{t("pdf.observations")}</Text>
-        <Text style={styles.certObservationsBox}>{certificate.notes ?? EMPTY}</Text>
-      </View>
 
       <View style={styles.twoCol}>
         <View style={styles.col}>
@@ -1361,6 +1388,9 @@ function TestReadingsPage({
                 locale={locale}
                 columns={certificate.columns}
                 pick={(column) => readingAt(column, sequence)?.value ?? null}
+                tone={(column) =>
+                  toleranceTone(readingAt(column, sequence)?.inTolerance)
+                }
                 zebra
               />
               <DataRow
@@ -1370,18 +1400,22 @@ function TestReadingsPage({
                 pick={(column) =>
                   readingAt(column, sequence)?.deviation ?? null
                 }
+                tone={(column) =>
+                  toleranceTone(readingAt(column, sequence)?.inTolerance)
+                }
               />
             </React.Fragment>
           )
         )}
+        <DataRow
+          label={t("pdf.observations")}
+          locale={locale}
+          columns={certificate.columns}
+          pick={(column) => column.notes}
+          zebra
+        />
       </View>
 
-      <View style={styles.certObservations}>
-        <Text style={styles.blockLabel}>{t("pdf.observations")}</Text>
-        <Text style={styles.certObservationsBox}>
-          {certificate.notes ?? EMPTY}
-        </Text>
-      </View>
       <CertificateValidation certificate={certificate} locale={locale} />
       <Footer report={report} locale={locale} />
     </Page>
@@ -1419,18 +1453,21 @@ function VerificationPage({
       <SectionBar>{t("pdf.exhaustReadings")}</SectionBar>
       <View style={styles.table}>
         <View style={styles.verificationHeader}>
-          <Text style={[styles.verificationCell, { width: "16%" }]}>
+          <Text style={[styles.verificationCell, { width: "12%" }]}>
             {t("pdf.tagNumber")}
           </Text>
-          <Text style={[styles.verificationCell, { width: "28%" }]}>
+          <Text style={[styles.verificationCell, { width: "22%" }]}>
             {t("pdf.description")}
           </Text>
-          <Text style={[styles.verificationCell, { width: "26%" }]}>
+          <Text style={[styles.verificationCell, { width: "20%" }]}>
             {t("pdf.areaReading")}
           </Text>
-          <Text style={[styles.verificationCell, { width: "15%" }]}>SCFM</Text>
-          <Text style={[styles.verificationCellLast, { width: "15%" }]}>
+          <Text style={[styles.verificationCell, { width: "12%" }]}>SCFM</Text>
+          <Text style={[styles.verificationCell, { width: "12%" }]}>
             {t("pdf.driveHz")}
+          </Text>
+          <Text style={[styles.verificationCellLast, { width: "22%" }]}>
+            {t("pdf.observations")}
           </Text>
         </View>
         {certificate.verificationRows.map((row, index) => (
@@ -1446,47 +1483,44 @@ function VerificationPage({
               style={[
                 styles.verificationCell,
                 styles.identity,
-                { width: "16%" },
+                { width: "12%" },
               ]}
             >
               {row.motorTag}
             </Text>
-            <Text style={[styles.verificationCell, { width: "28%" }]}>
+            <Text style={[styles.verificationCell, { width: "22%" }]}>
               {row.description}
             </Text>
-            <Text style={[styles.verificationCell, { width: "26%" }]}>
+            <Text style={[styles.verificationCell, { width: "20%" }]}>
               {row.rowLabel}
             </Text>
             <Text
               style={[
                 styles.verificationCell,
                 styles.traceTechnical,
-                { width: "15%", textAlign: "center" },
+                { width: "12%", textAlign: "center" },
               ]}
             >
               {row.scfm ?? EMPTY}
             </Text>
             <Text
               style={[
-                styles.verificationCellLast,
+                styles.verificationCell,
                 styles.traceTechnical,
-                { width: "15%", textAlign: "center" },
+                { width: "12%", textAlign: "center" },
               ]}
             >
               {row.notApplicable
                 ? NA
                 : row.driveFrequencyHz ?? EMPTY}
             </Text>
+            <Text style={[styles.verificationCellLast, { width: "22%" }]}>
+              {row.notes ?? EMPTY}
+            </Text>
           </View>
         ))}
       </View>
 
-      <View style={styles.certObservations}>
-        <Text style={styles.blockLabel}>{t("pdf.observations")}</Text>
-        <Text style={styles.certObservationsBox}>
-          {certificate.notes ?? EMPTY}
-        </Text>
-      </View>
       <CertificateValidation certificate={certificate} locale={locale} />
       <Footer report={report} locale={locale} />
     </Page>

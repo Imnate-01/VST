@@ -199,6 +199,21 @@ export function StepVerificationForm({
                             />
                             {t("verification.frequencyNotApplicable")}
                           </label>
+                          <label
+                            htmlFor={`verification-notes-${rowIndex}`}
+                            className="block space-y-1 text-sm"
+                          >
+                            <span className="font-medium text-foreground">
+                              {t("certificate.observations")}
+                            </span>
+                            <textarea
+                              id={`verification-notes-${rowIndex}`}
+                              rows={3}
+                              placeholder={t("certificate.observationsPlaceholder")}
+                              className="w-full rounded-lg border border-input bg-muted/70 px-3 py-2 text-sm"
+                              {...form.register(`rows.${rowIndex}.notes`)}
+                            />
+                          </label>
                         </div>
                       );
                     })}
@@ -208,20 +223,6 @@ export function StepVerificationForm({
             })}
           </div>
 
-          <section className="rounded-xl border bg-white p-5">
-            <label
-              htmlFor="verification-notes"
-              className="text-sm font-semibold"
-            >
-              {t("certificate.observations")}
-            </label>
-            <textarea
-              id="verification-notes"
-              rows={4}
-              className="mt-3 w-full rounded-lg border border-input bg-muted/70 px-3 py-2 text-sm"
-              {...form.register("notes")}
-            />
-          </section>
         </CardContent>
       </Card>
 

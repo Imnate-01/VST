@@ -43,6 +43,26 @@ describe("filas de identidad del certificado", () => {
     expect(rowProps("Reading \\(As Found\\)")).not.toContain("identity");
   });
 
+  it("no imprime filas de referencia real", () => {
+    expect(source).not.toContain('label="Actual reference"');
+    expect(wizardSource).not.toContain("measurement.actualReference");
+  });
+
+  it("imprime las observaciones dentro de la tabla de cada sensor", () => {
+    expect(source).toContain("pick={(column) => column.notes}");
+    expect(wizardSource).toContain(
+      "`measurements.${measurementIndex}.notes`"
+    );
+  });
+
+  it("colorea lecturas y desviaciones según su tolerancia", () => {
+    expect(source).toContain('cellTone === "pass" ? styles.passDataCell');
+    expect(source).toContain('cellTone === "fail" ? styles.failDataCell');
+    expect(source).toContain("asFoundInTolerance");
+    expect(source).toContain("asLeftInTolerance");
+    expect(source).toContain("readingAt(column, sequence)?.inTolerance");
+  });
+
   it("identity controla el contenido y strong el estilo", () => {
     // La celda muestra N/A solo si está excluida y NO es fila de identidad.
     expect(source).toContain("column.excluded && !identity ? NA");
