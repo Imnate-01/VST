@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 import { NewDeviceDialog, type NewDeviceRow } from "@/components/wizard/new-device-dialog";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
+import { useUnsavedChanges } from "@/components/navigation-protection-provider";
 
 type DeviceRow = {
   id: string;
@@ -46,6 +47,7 @@ export function StepDevicesForm({ reportId, devices, initialValues }: Props) {
     resolver: zodResolver(getDeviceSelectionSchema(locale)),
     defaultValues: initialValues,
   });
+  useUnsavedChanges(form.formState.isDirty);
   const { fields, append } = useFieldArray({
     control: form.control,
     name: "selections",

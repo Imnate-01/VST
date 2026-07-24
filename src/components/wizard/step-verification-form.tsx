@@ -23,6 +23,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
+import { useUnsavedChanges } from "@/components/navigation-protection-provider";
 import { useLanguage } from "@/components/language-provider";
 
 type Props = {
@@ -54,6 +55,7 @@ export function StepVerificationForm({
   });
   const watchedRows = useWatch({ control: form.control, name: "rows" });
   const isDirty = form.formState.isDirty;
+  useUnsavedChanges(isDirty);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);

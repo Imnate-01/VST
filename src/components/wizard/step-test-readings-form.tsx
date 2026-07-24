@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/card";
 import { MeasurementStatusBadge } from "@/components/report/measurement-status-badge";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
+import { useUnsavedChanges } from "@/components/navigation-protection-provider";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +104,7 @@ export function StepTestReadingsForm({
     name: "measurements",
   });
   const isDirty = form.formState.isDirty;
+  useUnsavedChanges(isDirty);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);

@@ -31,6 +31,7 @@ import { MeasurementStatusBadge } from "@/components/report/measurement-status-b
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
+import { useUnsavedChanges } from "@/components/navigation-protection-provider";
 
 export type MeasurementRow = {
   deviceSelectionId: string;
@@ -397,6 +398,7 @@ export function StepCertificateForm({
   const { fields } = useFieldArray({ control: form.control, name: "measurements" });
   const watchedMeasurements = useWatch({ control: form.control, name: "measurements" });
   const isDirty = form.formState.isDirty;
+  useUnsavedChanges(isDirty);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);

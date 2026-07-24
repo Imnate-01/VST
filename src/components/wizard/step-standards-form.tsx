@@ -14,6 +14,7 @@ import { useLanguage } from "@/components/language-provider";
 import { getCertificateLabel } from "@/lib/certificates";
 import type { CertificateType } from "@prisma/client";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
+import { useUnsavedChanges } from "@/components/navigation-protection-provider";
 
 type StandardOption = {
   id: string;
@@ -49,6 +50,7 @@ export function StepStandardsForm({
     resolver: zodResolver(getReportStandardsSchema(locale)),
     defaultValues: initialValues,
   });
+  useUnsavedChanges(form.formState.isDirty);
   const { fields } = useFieldArray({
     control: form.control,
     name: "standards",

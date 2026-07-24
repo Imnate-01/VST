@@ -60,6 +60,10 @@ const es = {
   "offline.conflictExport": "Exportar copia local",
   "offline.conflictDiscard": "Descartar copia local",
   "offline.conflictConfirmDiscard": "Confirmar descarte",
+  "offline.navigationBlocked":
+    "Esta sección necesita conexión. Tu reporte continúa abierto y los cambios guardados localmente se conservan.",
+  "navigation.unsavedChangesConfirm":
+    "Hay cambios sin guardar. Si sales de esta sección, se perderán. ¿Deseas continuar?",
   "nav.dashboard": "Panel principal",
   "nav.reports": "Reportes",
   "nav.profile": "Mi perfil",
@@ -609,6 +613,10 @@ const en: Record<MessageKey, string> = {
   "offline.conflictExport": "Export local copy",
   "offline.conflictDiscard": "Discard local copy",
   "offline.conflictConfirmDiscard": "Confirm discard",
+  "offline.navigationBlocked":
+    "This section needs an internet connection. Your report remains open and locally saved changes are preserved.",
+  "navigation.unsavedChangesConfirm":
+    "There are unsaved changes. Leaving this section will discard them. Continue?",
   "nav.dashboard": "Dashboard",
   "nav.reports": "Reports",
   "nav.profile": "My profile",

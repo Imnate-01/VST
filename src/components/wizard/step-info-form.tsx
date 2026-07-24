@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLanguage } from "@/components/language-provider";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
+import { useUnsavedChanges } from "@/components/navigation-protection-provider";
 
 type FillerOption = {
   id: string;
@@ -36,6 +37,7 @@ export function StepInfoForm({ preparedByName, reportNumber, initialValues, fill
     resolver: zodResolver(getReportInfoSchema(locale)),
     defaultValues: initialValues,
   });
+  useUnsavedChanges(form.formState.isDirty);
   const selectedFillerId = form.watch("fillerId");
   const selectedFiller = useMemo(
     () => fillers.find((filler) => filler.id === selectedFillerId),

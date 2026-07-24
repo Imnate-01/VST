@@ -63,6 +63,11 @@ conocidos y cómo probarla.
   autenticadas del dispositivo. Si hay cambios pendientes, la app pide
   confirmación para evitar descartarlos accidentalmente. Un cambio de usuario
   también limpia la copia anterior para impedir sincronización o lectura cruzada.
+- **Navegación protegida.** Sin conexión se permite continuar entre las pantallas
+  descargadas del wizard, pero se bloquea la salida a Perfil, Panel,
+  Administración u otros reportes. La app mantiene el formulario visible y
+  explica que esas secciones requieren internet. Con conexión, si el formulario
+  tiene cambios sin guardar, se pide confirmación antes de abandonarlo.
 
 ## Cómo probar (E2E manual)
 
