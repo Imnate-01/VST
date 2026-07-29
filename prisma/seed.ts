@@ -1,4 +1,10 @@
-import { PrismaClient, DeviceType, CertificateType, UserRole } from "@prisma/client";
+import {
+  PrismaClient,
+  DeviceType,
+  CertificateType,
+  StandardCertificationStatus,
+  UserRole,
+} from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -69,11 +75,12 @@ async function main() {
   console.log(`✔ Filler model: ${surefill.name}`);
 
   // ============ DEVICE CATALOG ============
-  // Los 26 dispositivos de la página "Calibration Applied" del reporte real
-  // CR_Nestle_20260512_CC_Rev2 (Nestle Fort Smith, SureFill 100 #652).
+  // Los dispositivos de la página "Calibration Applied" del reporte real
+  // CR_Nestle_20260512_CC_Rev2 (Nestle Fort Smith, SureFill 100 #652), más el
+  // cuarto sensor de presión que dibuja el molde base 2026.
   //
   // Nota: los tags 1403 y 1411 (Metering Pump MOT-1 / MOT-2) pertenecen a DOS
-  // certificados: Chamber Sterilization (p.12) y Tunnel Sterilization (p.13).
+  // certificados: Chamber Sterilization y Tunnel Sterilization.
   const devices = [
     // Temperature - RTD, ± 1.0 °C (p.3)
     { tag: "1573", desc: "Vaporizer Temperature Sensor - RTD",      type: DeviceType.RTD, tolValue: "1.0",   tolUnit: "°C",   isPct: false, certs: [CertificateType.TEMPERATURE],              order: 10 },
@@ -86,9 +93,14 @@ async function main() {
     { tag: "3546", desc: "Chamber Sterile Air Flow Sensor - FM",    type: DeviceType.FM,  tolValue: "0.500", tolUnit: "SCFM", isPct: false, certs: [CertificateType.CHAMBER_STERILE_AIR_FLOW], order: 10 },
 
     // Pressure - PS, ± 0.05 % PSI (p.6)
-    { tag: "3545", desc: "Tank N2 Pressure Sensor - PS",            type: DeviceType.PS,  tolValue: "0.05",  tolUnit: "PSI",  isPct: true,  certs: [CertificateType.PRESSURE],                 order: 10 },
-    { tag: "3527", desc: "Chamber Pressure Sensor - PS",            type: DeviceType.PS,  tolValue: "0.05",  tolUnit: "PSI",  isPct: true,  certs: [CertificateType.PRESSURE],                 order: 20 },
-    { tag: "3526", desc: "N2 Supply Pressure Sensor - PS",          type: DeviceType.PS,  tolValue: "0.05",  tolUnit: "PSI",  isPct: true,  certs: [CertificateType.PRESSURE],                 order: 30 },
+    // El molde base 2026 dibuja cuatro columnas (Tank, N2 Tank, Chamber, N2
+    // Supply) aunque su propia hoja "Calibration Applied" solo liste tres: el
+    // tag 2822 es el cuarto, y aparece en la lista de procedimientos de los
+    // ingenieros. Confirmar el tag con ellos antes de sembrar en producción.
+    { tag: "2822", desc: "Tank Pressure Sensor - PS",               type: DeviceType.PS,  tolValue: "0.05",  tolUnit: "PSI",  isPct: true,  certs: [CertificateType.PRESSURE],                 order: 10 },
+    { tag: "3545", desc: "Tank N2 Pressure Sensor - PS",            type: DeviceType.PS,  tolValue: "0.05",  tolUnit: "PSI",  isPct: true,  certs: [CertificateType.PRESSURE],                 order: 20 },
+    { tag: "3527", desc: "Chamber Pressure Sensor - PS",            type: DeviceType.PS,  tolValue: "0.05",  tolUnit: "PSI",  isPct: true,  certs: [CertificateType.PRESSURE],                 order: 30 },
+    { tag: "3526", desc: "N2 Supply Pressure Sensor - PS",          type: DeviceType.PS,  tolValue: "0.05",  tolUnit: "PSI",  isPct: true,  certs: [CertificateType.PRESSURE],                 order: 40 },
 
     // Vacuum Tank - PS, ± 0.10 % Hg (p.7)
     { tag: "1700", desc: "Vacuum Tank - Vacuum Sensor - PS",        type: DeviceType.PS,  tolValue: "0.10",  tolUnit: "Hg",   isPct: true,  certs: [CertificateType.VACUUM_TANK_PRESSURE],     order: 10 },
@@ -188,7 +200,7 @@ async function main() {
       calibrationExpiresAt: new Date("2027-03-20"),
     },
     {
-      // p.5 y p.14 - Chamber Sterile Air Flow, Exhaust
+      // p.5 y p.15 - Chamber Sterile Air Flow, Exhaust
       description: "Rotary Vane Manometer",
       manufacturer: "EXTECH",
       model: "HD 300",
@@ -198,7 +210,7 @@ async function main() {
       calibrationExpiresAt: new Date("2027-03-03"),
     },
     {
-      // p.6, p.7 y p.15 - Pressure, Vacuum Tank, Vacuum
+      // p.6, p.7 y p.8 - Pressure, Vacuum Tank, Vacuum
       description: "Precision Pressure Gauge",
       manufacturer: "FLUKE",
       model: "700G06",
@@ -208,7 +220,7 @@ async function main() {
       calibrationExpiresAt: new Date("2027-02-24"),
     },
     {
-      // p.8 y p.9 - EOL Flow, VAC Flow
+      // p.9 y p.10 - EOL Flow, VAC Flow
       description: "Electronic Digital Flow Meter",
       manufacturer: "FLOMEC",
       model: "A1",
@@ -218,7 +230,7 @@ async function main() {
       calibrationExpiresAt: new Date("2027-03-09"),
     },
     {
-      // p.10 - Humidity. La fecha de calibración real del PDF es 11/17/22; con
+      // p.11 - Humidity. La fecha de calibración real del PDF es 11/17/22; con
       // un año de vigencia quedaría vencida para la fecha de servicio y el
       // wizard la rechazaría. Se extiende para que el seed sea usable.
       description: "Salt Solution",
@@ -230,14 +242,26 @@ async function main() {
       calibrationExpiresAt: new Date("2027-11-17"),
     },
     {
-      // p.11, p.12 y p.13 - Ultrasonic y Metering Pump.
-      description: "Weight Scale + Precision Weight",
-      manufacturer: "TANITA / TROEMNER",
-      model: "1475T / 200g",
-      serialNumber: "14797111(0) / 3264",
-      calibrationCertNumber: "REFERENCE-SET-1475T-3264",
-      calibrationDate: new Date("2026-05-12"),
-      calibrationExpiresAt: new Date("2027-05-12"),
+      // p.12, p.13 y p.14 - BÃ¡scula de referencia sin certificado aplicable.
+      description: "Weight Scale",
+      manufacturer: "TANITA",
+      model: "1475T",
+      serialNumber: "14797111(0)",
+      certificationStatus: StandardCertificationStatus.NOT_APPLICABLE,
+      calibrationCertNumber: null,
+      calibrationDate: null,
+      calibrationExpiresAt: null,
+    },
+    {
+      // p.12, p.13 y p.14 - Peso de precisiÃ³n sin certificado aplicable.
+      description: "Precision Weight",
+      manufacturer: "TROEMNER",
+      model: "200g",
+      serialNumber: "3264",
+      certificationStatus: StandardCertificationStatus.NOT_APPLICABLE,
+      calibrationCertNumber: null,
+      calibrationDate: null,
+      calibrationExpiresAt: null,
     },
   ];
 

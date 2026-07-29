@@ -20,6 +20,12 @@ export function getMeasurementPointSchema(locale: Locale) {
   const optionalDecimalStringSchema = getOptionalDecimalStringSchema(locale);
   return z.object({
     kind: z.nativeEnum(PointKind),
+    /**
+     * El punto no aplica a este dispositivo. El servidor descarta lo capturado
+     * en él, así que el formulario puede conservar los valores por si se
+     * desmarca.
+     */
+    notApplicable: z.boolean().optional(),
     /** Condición de ensayo (blower speed) en el layout SETPOINT. */
     conditionValue: optionalDecimalStringSchema,
     /** Setpoint nominal; es la referencia usada para calcular la desviación. */

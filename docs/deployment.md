@@ -199,7 +199,7 @@ desarrollo.
 
 1. Dale **Deploy**. El build corre `prisma generate && prisma migrate deploy &&
    next build`: crea las tablas y los índices en la base de producción.
-2. La base queda vacía de catálogo. Poblá el catálogo (filler, 26 dispositivos, 6
+2. La base queda vacía de catálogo. Poblá el catálogo (filler, 27 dispositivos, 8
    instrumentos patrón) corriendo el seed **una vez** apuntando a producción:
 
    ```bash

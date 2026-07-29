@@ -4,6 +4,7 @@ import type {
   CertificateType,
   MeasurementStatus,
   PointKind,
+  StandardCertificationStatus,
 } from "@prisma/client";
 
 /**
@@ -51,13 +52,15 @@ export type OfflineStandard = {
   manufacturerSnapshot: string;
   modelSnapshot: string;
   serialSnapshot: string;
-  certNumberSnapshot: string;
-  calDateSnapshot: string;
-  calExpiresAtSnapshot: string;
+  certificationStatusSnapshot: StandardCertificationStatus;
+  certNumberSnapshot: string | null;
+  calDateSnapshot: string | null;
+  calExpiresAtSnapshot: string | null;
 };
 
 export type OfflinePoint = {
   kind: PointKind;
+  notApplicable: boolean;
   conditionValue: string | null;
   targetNominal: string | null;
   asFoundReference: string | null;
@@ -110,6 +113,11 @@ export type OfflineCertificate = {
     descriptionSnapshot: string;
     serialSnapshot: string;
   };
+  /** Patrones complementarios, en el orden en que se declararon. */
+  additionalStandards: Array<{
+    descriptionSnapshot: string;
+    serialSnapshot: string;
+  }>;
   /** Selecciones de dispositivo que aplican a este certificado, ya ordenadas. */
   deviceSelections: OfflineDeviceSelection[];
   measurements: OfflineMeasurement[];

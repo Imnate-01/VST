@@ -257,11 +257,28 @@ export default async function DashboardPage({
         {standards.length > 0 && (
           <div className="mt-5 grid gap-5 lg:grid-cols-3">
             {standards.map((standard) => {
-              const daysRemaining = Math.ceil(
-                (standard.calibrationExpiresAt.getTime() - now.getTime()) / DAY_MS
-              );
-              const state = daysRemaining < 0 ? "expired" : daysRemaining <= 30 ? "soon" : "valid";
-              const StateIcon = state === "valid" ? Check : state === "soon" ? Clock3 : TriangleAlert;
+              const daysRemaining = standard.calibrationExpiresAt
+                ? Math.ceil(
+                    (standard.calibrationExpiresAt.getTime() - now.getTime()) / DAY_MS
+                  )
+                : null;
+              const state =
+                standard.certificationStatus === "NOT_APPLICABLE"
+                  ? "na"
+                  : standard.certificationStatus === "PENDING" ||
+                      daysRemaining === null
+                    ? "pending"
+                    : daysRemaining < 0
+                      ? "expired"
+                      : daysRemaining <= 30
+                        ? "soon"
+                        : "valid";
+              const StateIcon =
+                state === "valid" || state === "na"
+                  ? Check
+                  : state === "soon"
+                    ? Clock3
+                    : TriangleAlert;
 
               return (
                 <Card key={standard.id}>
@@ -270,14 +287,20 @@ export default async function DashboardPage({
                     <span
                       className={cn(
                         "status-badge shrink-0",
-                        state === "valid" && "border-success/25 bg-success-muted text-success",
+                        (state === "valid" || state === "na") &&
+                          "border-success/25 bg-success-muted text-success",
                         state === "soon" && "border-warning/25 bg-warning-muted text-warning",
-                        state === "expired" && "border-destructive/25 bg-destructive/5 text-destructive"
+                        (state === "expired" || state === "pending") &&
+                          "border-destructive/25 bg-destructive/5 text-destructive"
                       )}
                     >
                       <StateIcon className="h-3.5 w-3.5" aria-hidden="true" />
                       {state === "valid"
                         ? t("dashboard.valid")
+                        : state === "na"
+                          ? t("standardsAdmin.notApplicable")
+                          : state === "pending"
+                            ? t("standardsAdmin.pendingCertification")
                         : state === "soon"
                           ? t("dashboard.expiringSoon")
                           : t("dashboard.expired")}
@@ -288,21 +311,35 @@ export default async function DashboardPage({
                       <dt className="text-muted-foreground">S/N</dt>
                       <dd className="technical-id">{standard.serialNumber}</dd>
                       <dt className="text-muted-foreground">{t("common.certificateAbbr")}</dt>
-                      <dd className="technical-id">{standard.calibrationCertNumber}</dd>
+                      <dd className="technical-id">
+                        {state === "pending"
+                          ? t("standardsAdmin.pendingCertification")
+                          : standard.calibrationCertNumber ??
+                            t("standardsAdmin.notApplicable")}
+                      </dd>
                       <dt className="text-muted-foreground">{t("dashboard.validTo")}</dt>
-                      <dd className="technical-id">{isoDate(standard.calibrationExpiresAt)}</dd>
+                      <dd className="technical-id">
+                        {standard.calibrationExpiresAt
+                          ? isoDate(standard.calibrationExpiresAt)
+                          : t("standardsAdmin.notApplicable")}
+                      </dd>
                     </dl>
                     <div
                       className={cn(
                         "technical-id mt-5 border-t pt-4 text-sm font-semibold",
-                        state === "valid" && "text-success",
+                        (state === "valid" || state === "na") && "text-success",
                         state === "soon" && "text-warning",
-                        state === "expired" && "text-destructive"
+                        (state === "expired" || state === "pending") &&
+                          "text-destructive"
                       )}
                     >
                       {state === "expired"
                         ? t("dashboard.expired")
-                        : t("dashboard.days", { count: daysRemaining })}
+                        : state === "pending"
+                          ? t("standardsAdmin.pendingCertification")
+                          : state === "na"
+                            ? t("standardsAdmin.notApplicable")
+                            : t("dashboard.days", { count: daysRemaining ?? 0 })}
                     </div>
                   </CardContent>
                 </Card>

@@ -216,6 +216,7 @@ export async function upsertCertificateMeasurement(
         data: calculated.points.map((point) => ({
           measurementId: saved.id,
           kind: point.kind,
+          notApplicable: point.notApplicable,
           conditionValue: toPrismaDecimalValue(point.conditionValue),
           targetNominal: toPrismaDecimalValue(point.targetNominal),
           asFoundReference: toPrismaDecimalValue(point.asFoundReference),

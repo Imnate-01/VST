@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { getReportForPdf } from "@/server/pdf/report-data";
 import { ReportDocument } from "@/server/pdf/report-document";
 import { logAudit } from "@/server/services/audit";
+import { findStaleSignatures } from "@/server/services/signatures";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n";
 
 type Actor = { id: string; role: UserRole };
@@ -125,6 +126,19 @@ export async function submitReport(
   if (unsigned > 0) {
     throw new Error(
       `Faltan firmar ${unsigned} certificado(s) antes de firmar el reporte.`
+    );
+  }
+
+  // Que exista una firma activa no basta: tiene que corresponder al contenido
+  // que se va a emitir. Se recalculan los hashes por si algún camino de
+  // edición no revocó, para no archivar un PDF que nadie firmó así.
+  const stale = await findStaleSignatures(reportId);
+  if (stale.certificateTypes.length > 0 || stale.report) {
+    const sections = stale.certificateTypes.join(", ");
+    throw new Error(
+      stale.certificateTypes.length > 0
+        ? `El contenido cambió después de firmar: vuelve a firmar ${sections} y el reporte.`
+        : "El contenido cambió después de firmar: vuelve a firmar el reporte."
     );
   }
 

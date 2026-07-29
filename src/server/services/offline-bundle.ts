@@ -36,6 +36,10 @@ export async function getOfflineReportBundle(
       certificates: {
         include: {
           primaryStandard: true,
+          additionalStandards: {
+            include: { reportStandard: true },
+            orderBy: { displayOrder: "asc" },
+          },
           verificationRows: true,
           measurements: { include: { points: true, readings: true } },
         },
@@ -94,6 +98,7 @@ export async function getOfflineReportBundle(
           statusReason: measurement.statusReason,
           points: measurement.points.map((point) => ({
             kind: point.kind,
+            notApplicable: point.notApplicable,
             conditionValue: dec(point.conditionValue),
             targetNominal: dec(point.targetNominal),
             asFoundReference: dec(point.asFoundReference),
@@ -126,6 +131,10 @@ export async function getOfflineReportBundle(
           descriptionSnapshot: certificate.primaryStandard.descriptionSnapshot,
           serialSnapshot: certificate.primaryStandard.serialSnapshot,
         },
+        additionalStandards: certificate.additionalStandards.map((link) => ({
+          descriptionSnapshot: link.reportStandard.descriptionSnapshot,
+          serialSnapshot: link.reportStandard.serialSnapshot,
+        })),
         deviceSelections: certSelections,
         verificationRows: certificate.verificationRows
           .sort((a, b) => a.displayOrder - b.displayOrder)
@@ -184,9 +193,10 @@ export async function getOfflineReportBundle(
       manufacturerSnapshot: standard.manufacturerSnapshot,
       modelSnapshot: standard.modelSnapshot,
       serialSnapshot: standard.serialSnapshot,
+      certificationStatusSnapshot: standard.certificationStatusSnapshot,
       certNumberSnapshot: standard.certNumberSnapshot,
-      calDateSnapshot: standard.calDateSnapshot.toISOString(),
-      calExpiresAtSnapshot: standard.calExpiresAtSnapshot.toISOString(),
+      calDateSnapshot: standard.calDateSnapshot?.toISOString() ?? null,
+      calExpiresAtSnapshot: standard.calExpiresAtSnapshot?.toISOString() ?? null,
     })),
     certificates,
     signatures,

@@ -333,6 +333,7 @@ export default async function CertificateWizardPage({ params }: Props) {
 
         return {
           kind,
+          notApplicable: saved?.notApplicable ?? false,
           conditionValue: decimalToString(saved?.conditionValue),
           targetNominal:
             decimalToString(saved?.targetNominal) || defaults[kind] || "",

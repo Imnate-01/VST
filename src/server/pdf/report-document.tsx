@@ -12,7 +12,13 @@ import {
 } from "@react-pdf/renderer";
 import { CertificateLayout, PointKind } from "@prisma/client";
 import { SigLogo } from "./sig-logo";
-import type { PdfCertificate, PdfDeviceColumn, PdfReport, PdfSignature } from "./report-data";
+import type {
+  PdfCertificate,
+  PdfCertificateStandard,
+  PdfDeviceColumn,
+  PdfReport,
+  PdfSignature,
+} from "./report-data";
 import {
   certificateOutcome,
   countChannels,
@@ -427,6 +433,49 @@ const styles = StyleSheet.create({
     fontSize: 6.7,
   },
   traceTechnical: { fontFamily: "Courier", fontSize: 6.4 },
+  traceRowMuted: { backgroundColor: SAND_1 },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginTop: 9,
+    marginBottom: 2,
+  },
+  sectionCount: {
+    fontSize: 6.2,
+    fontFamily: "Courier-Bold",
+    color: SAND_4,
+    letterSpacing: 0.5,
+  },
+  sectionLead: {
+    fontSize: 7,
+    lineHeight: 1.5,
+    color: SAND_4,
+    marginBottom: 5,
+    maxWidth: 470,
+  },
+  scopeIn: { fontFamily: "Helvetica-Bold", color: PASS },
+  scopeOut: { fontFamily: "Helvetica-Bold", color: SAND_4 },
+  emptyNote: {
+    borderWidth: 1,
+    borderColor: SAND_2,
+    borderRadius: 5,
+    backgroundColor: SAND_1,
+    padding: 8,
+    fontSize: 7.2,
+    color: SAND_4,
+  },
+  termsBox: {
+    borderWidth: 1,
+    borderColor: SAND_2,
+    borderRadius: 6,
+    backgroundColor: ZEBRA,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  termsText: { fontSize: 7.6, lineHeight: 1.65, color: BLACK },
+  termsLink: { fontFamily: "Courier-Bold", fontSize: 7.2, color: BRAND },
+  standardBlockSpaced: { marginTop: 8 },
   certObservations: { marginTop: 9 },
   certObservationsBox: {
     borderWidth: 1,
@@ -660,7 +709,9 @@ function BrandHeader({
 }) {
   const t = createTranslator(locale);
   return (
-    <View style={styles.header}>
+    // `fixed` para que una sección que se desborda (un checklist de máquina
+    // completa) siga identificando el reporte en su página de continuación.
+    <View style={styles.header} fixed>
       <View style={styles.headerLeft}>
         <View style={styles.logoBox}>
           <SigLogo width={24} />
@@ -735,14 +786,6 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
   const outcome = reportOutcome(report.certificates);
   const tone = OUTCOME_TONE[outcome];
   const channels = countChannels(report.certificates);
-  const standards = Array.from(
-    new Map(
-      report.certificates.map((certificate) => [
-        certificate.standard.serial,
-        certificate.standard,
-      ])
-    ).values()
-  );
   const certificateSummary = report.certificates.map((certificate) => {
     const columns = evaluatedColumns(certificate);
     return {
@@ -836,9 +879,13 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
               </Text>
               <Text style={styles.resultMeta}>
                 {reason ? `${reason} · ` : ""}
-                {t("pdf.toleranceLabel", {
-                  tolerance: summary.certificate.tolerance || "-",
-                })}
+                {/* Extracción no se juzga contra una tolerancia: anunciar
+                    "Tolerancia ±-" en su tarjeta solo confunde. */}
+                {summary.certificate.tolerance
+                  ? t("pdf.toleranceLabel", {
+                      tolerance: summary.certificate.tolerance,
+                    })
+                  : t("pdf.verification")}
               </Text>
             </View>
           );
@@ -864,37 +911,8 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
         </Text>
       </View>
 
-      <Text style={styles.sectionTitle}>{t("pdf.referenceTraceability")}</Text>
-      <View style={styles.traceTable}>
-        <View style={styles.traceHeader}>
-          <Text style={[styles.traceHeadCell, { width: "45%" }]}>{t("pdf.standard")}</Text>
-          <Text style={[styles.traceHeadCell, { width: "18%" }]}>{t("pdf.serial")}</Text>
-          <Text style={[styles.traceHeadCell, { width: "20%" }]}>{t("pdf.certificate")}</Text>
-          <Text style={[styles.traceHeadCell, { width: "17%" }]}>{t("pdf.validTo")}</Text>
-        </View>
-        {standards.map((standard, index) => (
-          <View
-            key={standard.serial}
-            style={index === standards.length - 1 ? styles.traceRowLast : styles.traceRow}
-          >
-            <Text style={[styles.traceCell, { width: "45%" }]}>
-              {standard.description} - {standard.manufacturer} {standard.model}
-            </Text>
-            <Text style={[styles.traceCell, styles.traceTechnical, { width: "18%" }]}>
-              {standard.serial}
-            </Text>
-            <Text style={[styles.traceCell, styles.traceTechnical, { width: "20%" }]}>
-              {standard.certNumber}
-            </Text>
-            <Text style={[styles.traceCell, styles.traceTechnical, { width: "17%" }]}>
-              {standard.validTo}
-            </Text>
-          </View>
-        ))}
-      </View>
-
       {/* Observaciones y firmas comparten una sola fila: la portada ya carga el
-          resumen y la trazabilidad, y apilarlas la desborda a una segunda página. */}
+          resumen de resultados, y apilarlas la desborda a una segunda página. */}
       <View style={styles.threeCol}>
         <View style={styles.col}>
           <Text style={styles.blockLabel}>{t("pdf.observations")}</Text>
@@ -922,6 +940,263 @@ function CoverPage({ report, locale }: { report: PdfReport; locale: Locale }) {
           </View>
           <Text style={styles.signOffHash}>{t("pdf.countersign")}</Text>
         </View>
+      </View>
+
+      <Footer report={report} locale={locale} />
+    </Page>
+  );
+}
+
+const CHECKLIST_WIDTHS = {
+  tag: "11%",
+  description: "21%",
+  type: "6%",
+  tolerance: "10%",
+  certificates: "26%",
+  scope: "9%",
+  reason: "17%",
+} as const;
+
+const TRACE_WIDTHS = {
+  standard: "30%",
+  serial: "14%",
+  certificate: "15%",
+  validTo: "10%",
+  usedIn: "31%",
+} as const;
+
+function SectionHead({ title, count }: { title: string; count?: string }) {
+  return (
+    // Sin espacio para el encabezado de la tabla y un par de filas, el título
+    // se lleva el salto: nunca queda solo al pie de la página.
+    <View style={styles.sectionHead} minPresenceAhead={70}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {count ? <Text style={styles.sectionCount}>{count}</Text> : null}
+    </View>
+  );
+}
+
+/**
+ * Checklist de dispositivos y patrones de referencia.
+ *
+ * Las dos tablas viven fuera de la portada porque crecen con el reporte: un
+ * equipo completo lleva más de una decena de dispositivos y hasta siete
+ * instrumentos, y en la portada las filas de abajo se perdían.
+ */
+function ScopePage({ report, locale }: { report: PdfReport; locale: Locale }) {
+  const t = createTranslator(locale);
+  const included = report.checklist.filter((row) => row.included).length;
+
+  return (
+    <Page size="LETTER" style={styles.page}>
+      <BrandHeader report={report} locale={locale} />
+
+      <Text style={styles.coverEyebrow}>{t("pdf.scopeTraceability")}</Text>
+
+      <SectionHead
+        title={t("pdf.checklistTitle")}
+        count={
+          report.checklist.length > 0
+            ? t("pdf.checklistIncluded", {
+                count: included,
+                total: report.checklist.length,
+              })
+            : undefined
+        }
+      />
+      <Text style={styles.sectionLead}>{t("pdf.checklistLead")}</Text>
+      {report.checklist.length === 0 ? (
+        <Text style={styles.emptyNote}>{t("pdf.checklistEmpty")}</Text>
+      ) : (
+        <View style={styles.traceTable}>
+          {/* Un checklist de máquina completa no cabe en una página: la cabecera
+              se repite al continuar y ninguna fila se parte por la mitad. */}
+          <View style={styles.traceHeader} fixed>
+            <Text style={[styles.traceHeadCell, { width: CHECKLIST_WIDTHS.tag }]}>
+              {t("pdf.tagNumber")}
+            </Text>
+            <Text style={[styles.traceHeadCell, { width: CHECKLIST_WIDTHS.description }]}>
+              {t("pdf.description")}
+            </Text>
+            <Text style={[styles.traceHeadCell, { width: CHECKLIST_WIDTHS.type }]}>
+              {t("pdf.deviceType")}
+            </Text>
+            <Text style={[styles.traceHeadCell, { width: CHECKLIST_WIDTHS.tolerance }]}>
+              {t("pdf.tolerance")}
+            </Text>
+            <Text style={[styles.traceHeadCell, { width: CHECKLIST_WIDTHS.certificates }]}>
+              {t("pdf.certificates")}
+            </Text>
+            <Text style={[styles.traceHeadCell, { width: CHECKLIST_WIDTHS.scope }]}>
+              {t("pdf.scope")}
+            </Text>
+            <Text style={[styles.traceHeadCell, { width: CHECKLIST_WIDTHS.reason }]}>
+              {t("pdf.exclusionReason")}
+            </Text>
+          </View>
+          {report.checklist.map((row, index) => (
+            <View
+              key={row.tagNumber}
+              wrap={false}
+              style={[
+                index === report.checklist.length - 1
+                  ? styles.traceRowLast
+                  : styles.traceRow,
+                // El dispositivo excluido conserva su fila legible: el gris
+                // marca que quedó fuera del alcance, no que falte el dato.
+                row.included ? {} : styles.traceRowMuted,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.traceCell,
+                  styles.identity,
+                  { width: CHECKLIST_WIDTHS.tag },
+                ]}
+              >
+                {row.tagNumber}
+              </Text>
+              <Text style={[styles.traceCell, { width: CHECKLIST_WIDTHS.description }]}>
+                {row.description}
+              </Text>
+              <Text
+                style={[
+                  styles.traceCell,
+                  styles.traceTechnical,
+                  { width: CHECKLIST_WIDTHS.type },
+                ]}
+              >
+                {row.deviceType}
+              </Text>
+              <Text
+                style={[
+                  styles.traceCell,
+                  styles.traceTechnical,
+                  { width: CHECKLIST_WIDTHS.tolerance },
+                ]}
+              >
+                ± {row.tolerance}
+              </Text>
+              <Text style={[styles.traceCell, { width: CHECKLIST_WIDTHS.certificates }]}>
+                {row.certificates.join(" · ") || EMPTY}
+              </Text>
+              <Text
+                style={[
+                  styles.traceCell,
+                  row.included ? styles.scopeIn : styles.scopeOut,
+                  { width: CHECKLIST_WIDTHS.scope },
+                ]}
+              >
+                {t(row.included ? "pdf.included" : "pdf.excluded")}
+              </Text>
+              <Text style={[styles.traceCell, { width: CHECKLIST_WIDTHS.reason }]}>
+                {row.included ? EMPTY : (row.exclusionReason ?? EMPTY)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <SectionHead title={t("pdf.referenceTraceability")} />
+      <Text style={styles.sectionLead}>{t("pdf.traceabilityLead")}</Text>
+      <View style={styles.traceTable}>
+        <View style={styles.traceHeader} fixed>
+          <Text style={[styles.traceHeadCell, { width: TRACE_WIDTHS.standard }]}>
+            {t("pdf.standard")}
+          </Text>
+          <Text style={[styles.traceHeadCell, { width: TRACE_WIDTHS.serial }]}>
+            {t("pdf.serial")}
+          </Text>
+          <Text style={[styles.traceHeadCell, { width: TRACE_WIDTHS.certificate }]}>
+            {t("pdf.certificate")}
+          </Text>
+          <Text style={[styles.traceHeadCell, { width: TRACE_WIDTHS.validTo }]}>
+            {t("pdf.validTo")}
+          </Text>
+          <Text style={[styles.traceHeadCell, { width: TRACE_WIDTHS.usedIn }]}>
+            {t("pdf.usedIn")}
+          </Text>
+        </View>
+        {report.standards.map((standard, index) => (
+          <View
+            key={standard.serial}
+            wrap={false}
+            style={
+              index === report.standards.length - 1
+                ? styles.traceRowLast
+                : styles.traceRow
+            }
+          >
+            <Text style={[styles.traceCell, { width: TRACE_WIDTHS.standard }]}>
+              {standard.description} - {standard.manufacturer} {standard.model}
+            </Text>
+            <Text
+              style={[
+                styles.traceCell,
+                styles.traceTechnical,
+                { width: TRACE_WIDTHS.serial },
+              ]}
+            >
+              {standard.serial}
+            </Text>
+            <Text
+              style={[
+                styles.traceCell,
+                styles.traceTechnical,
+                { width: TRACE_WIDTHS.certificate },
+              ]}
+            >
+              {standard.certNumber}
+            </Text>
+            <Text
+              style={[
+                styles.traceCell,
+                styles.traceTechnical,
+                { width: TRACE_WIDTHS.validTo },
+              ]}
+            >
+              {standard.validTo}
+            </Text>
+            <Text style={[styles.traceCell, { width: TRACE_WIDTHS.usedIn }]}>
+              {standard.usedIn.join(" · ") || EMPTY}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <Footer report={report} locale={locale} />
+    </Page>
+  );
+}
+
+/**
+ * Condiciones comerciales de SIG. Se imprimen textualmente y en inglés en
+ * cualquier idioma del reporte: es el texto legal vigente y una traducción
+ * cambiaría lo que el cliente acepta al colocar la orden.
+ */
+const TERMS_URL = "https://www.sig.biz/en/general-terms-and-conditions-for-customers";
+const TERMS_TEXT_BEFORE_URL =
+  "Terms and Conditions: If there is an existing written agreement between Customer and SIG governing the sale of the products or services quoted herein, the terms of that agreement shall apply. In the absence of such agreement, this Quotation and any resulting orders are subject to SIG’s General Terms and Conditions of Sale, a current copy of which can be found at ";
+const TERMS_TEXT_AFTER_URL =
+  " (“GTC”). By placing an order, Customer agrees to be bound by the GTC, which are incorporated by reference. Any terms in Customer’s purchase order or other documents that are different from, or in addition to, the GTC are expressly rejected and shall have no effect unless accepted by SIG in a signed writing.";
+
+function TermsPage({ report, locale }: { report: PdfReport; locale: Locale }) {
+  const t = createTranslator(locale);
+  return (
+    <Page size="LETTER" style={styles.page}>
+      <BrandHeader report={report} locale={locale} />
+
+      <SectionHead title={t("pdf.termsTitle")} />
+      {/* El aviso del idioma sí se traduce: explica por qué el bloque de abajo
+          está en inglés. */}
+      {locale !== "en" && <Text style={styles.sectionLead}>{t("pdf.termsLead")}</Text>}
+
+      <View style={styles.termsBox}>
+        <Text style={styles.termsText}>
+          {TERMS_TEXT_BEFORE_URL}
+          <Text style={styles.termsLink}>{TERMS_URL}</Text>
+          {TERMS_TEXT_AFTER_URL}
+        </Text>
       </View>
 
       <Footer report={report} locale={locale} />
@@ -969,6 +1244,7 @@ function DataRow({
    * Es una regla de contenido, no de estilo: el resaltado va en `strong`.
    */
   identity,
+  notApplicable,
 }: {
   label: string;
   columns: PdfDeviceColumn[];
@@ -977,6 +1253,12 @@ function DataRow({
   zebra?: boolean;
   strong?: boolean;
   identity?: boolean;
+  /**
+   * El punto de esta fila no aplica al dispositivo. Distinto de `excluded`, que
+   * es del dispositivo entero: acá el sensor sí se calibra, pero no en este
+   * punto (los RTD de túnel y cámara no tienen punto bajo).
+   */
+  notApplicable?: (column: PdfDeviceColumn) => boolean;
   locale: Locale;
 }) {
   const translatedLabel = pdfDataLabelKeys[label]
@@ -986,7 +1268,8 @@ function DataRow({
     <View style={[styles.row, zebra ? styles.rowZebra : {}]}>
       <Text style={styles.labelCell}>{translatedLabel}</Text>
       {columns.map((column, index) => {
-        const cellTone = column.excluded ? null : tone?.(column);
+        const blank = column.excluded || (notApplicable?.(column) ?? false);
+        const cellTone = blank ? null : tone?.(column);
         return (
           <Text
             key={column.tagNumber}
@@ -995,10 +1278,10 @@ function DataRow({
               strong ? styles.identity : {},
               cellTone === "pass" ? styles.passDataCell : {},
               cellTone === "fail" ? styles.failDataCell : {},
-              column.excluded ? styles.excluded : {},
+              blank ? styles.excluded : {},
             ]}
           >
-            {column.excluded && !identity ? NA : (pick(column) ?? EMPTY)}
+            {blank && !identity ? NA : (pick(column) ?? EMPTY)}
           </Text>
         );
       })}
@@ -1118,6 +1401,7 @@ function CertificatePage({
                 label={certificate.conditionLabel}
                 locale={locale}
                 columns={columns}
+                notApplicable={(c) => pointOf(c, kind)?.notApplicable ?? false}
                 pick={(c) => pointOf(c, kind)?.conditionValue ?? null}
               />
             )}
@@ -1125,6 +1409,7 @@ function CertificatePage({
               label="Target reference (nominal)"
               locale={locale}
               columns={columns}
+              notApplicable={(c) => pointOf(c, kind)?.notApplicable ?? false}
               pick={(c) => pointOf(c, kind)?.targetNominal ?? null}
             />
 
@@ -1133,6 +1418,7 @@ function CertificatePage({
               label="Reading (As Found)"
               locale={locale}
               columns={columns}
+              notApplicable={(c) => pointOf(c, kind)?.notApplicable ?? false}
               pick={(c) => pointOf(c, kind)?.asFoundReading ?? null}
               tone={(c) =>
                 toleranceTone(pointOf(c, kind)?.asFoundInTolerance)
@@ -1144,6 +1430,7 @@ function CertificatePage({
                 label="Deviation"
                 locale={locale}
                 columns={columns}
+                notApplicable={(c) => pointOf(c, kind)?.notApplicable ?? false}
                 pick={(c) => pointOf(c, kind)?.asFoundDeviation ?? null}
                 tone={(c) =>
                   toleranceTone(pointOf(c, kind)?.asFoundInTolerance)
@@ -1154,6 +1441,7 @@ function CertificatePage({
               label={t("measurement.passFail")}
               locale={locale}
               columns={columns}
+              notApplicable={(c) => pointOf(c, kind)?.notApplicable ?? false}
               pick={(c) =>
                 resultText(pointOf(c, kind)?.asFoundInTolerance)
               }
@@ -1167,6 +1455,7 @@ function CertificatePage({
               label="Reading (As Left)"
               locale={locale}
               columns={columns}
+              notApplicable={(c) => pointOf(c, kind)?.notApplicable ?? false}
               pick={(c) => pointOf(c, kind)?.asLeftReading ?? null}
               tone={(c) =>
                 toleranceTone(pointOf(c, kind)?.asLeftInTolerance)
@@ -1178,6 +1467,7 @@ function CertificatePage({
                 label="Deviation"
                 locale={locale}
                 columns={columns}
+                notApplicable={(c) => pointOf(c, kind)?.notApplicable ?? false}
                 pick={(c) => pointOf(c, kind)?.asLeftDeviation ?? null}
                 tone={(c) =>
                   toleranceTone(pointOf(c, kind)?.asLeftInTolerance)
@@ -1188,6 +1478,7 @@ function CertificatePage({
               label={t("measurement.passFail")}
               locale={locale}
               columns={columns}
+              notApplicable={(c) => pointOf(c, kind)?.notApplicable ?? false}
               pick={(c) =>
                 resultText(pointOf(c, kind)?.asLeftInTolerance)
               }
@@ -1220,40 +1511,51 @@ function CertificatePage({
         </View>
       )}
 
-      <View style={styles.twoCol}>
-        <View style={styles.col}>
-          <SectionBar>{t("pdf.standardValidation")}</SectionBar>
-          <View style={styles.table}>
-            <Field label={t("pdf.deviceDescription")} value={certificate.standard.description} />
-            <Field label={t("pdf.manufacturer")} value={certificate.standard.manufacturer} />
-            <Field label={t("pdf.model")} value={certificate.standard.model} />
-            <Field label={t("pdf.serial")} value={certificate.standard.serial} />
-            <Field label={t("pdf.calibrationCertificate")} value={certificate.standard.certNumber} />
-            <Field
-              label={t("pdf.calibrationDate")}
-              value={certificate.standard.calibrationDate}
-            />
-            <Field
-              label={t("pdf.validTo")}
-              value={certificate.standard.validTo}
-              last
-            />
-          </View>
-        </View>
-        <View style={styles.col}>
-          <SignatureSlot
-            signature={certificate.signature}
-            label={t("pdf.signatureDate")}
-            locale={locale}
-          />
-        </View>
-      </View>
+      <CertificateValidation certificate={certificate} locale={locale} />
 
       <Footer report={report} locale={locale} />
     </Page>
   );
 }
 
+function StandardBlock({
+  standard,
+  title,
+  spaced,
+  locale,
+}: {
+  standard: PdfCertificateStandard;
+  title: string;
+  spaced?: boolean;
+  locale: Locale;
+}) {
+  const t = createTranslator(locale);
+  return (
+    <View style={spaced ? styles.standardBlockSpaced : {}} wrap={false}>
+      <SectionBar>{title}</SectionBar>
+      <View style={styles.table}>
+        <Field label={t("pdf.deviceDescription")} value={standard.description} />
+        <Field label={t("pdf.manufacturer")} value={standard.manufacturer} />
+        <Field label={t("pdf.model")} value={standard.model} />
+        <Field label={t("pdf.serial")} value={standard.serial} />
+        <Field
+          label={t("pdf.calibrationCertificate")}
+          value={standard.certNumber}
+        />
+        <Field label={t("pdf.calibrationDate")} value={standard.calibrationDate} />
+        <Field label={t("pdf.validTo")} value={standard.validTo} last />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Patrones del certificado y firma del preparador.
+ *
+ * Un bloque por instrumento: la plantilla imprime báscula y peso patrón por
+ * separado. La firma va una sola vez — es la misma validación del preparador
+ * sobre toda la sección, no una por instrumento.
+ */
 function CertificateValidation({
   certificate,
   locale,
@@ -1262,35 +1564,24 @@ function CertificateValidation({
   locale: Locale;
 }) {
   const t = createTranslator(locale);
+  const total = certificate.standards.length;
+
   return (
     <View style={styles.twoCol}>
       <View style={styles.col}>
-        <SectionBar>{t("pdf.standardValidation")}</SectionBar>
-        <View style={styles.table}>
-          <Field
-            label={t("pdf.deviceDescription")}
-            value={certificate.standard.description}
+        {certificate.standards.map((standard, index) => (
+          <StandardBlock
+            key={`${standard.serial}:${index}`}
+            standard={standard}
+            locale={locale}
+            spaced={index > 0}
+            title={
+              total > 1
+                ? `${t("pdf.standardValidation")} ${index + 1}/${total}`
+                : t("pdf.standardValidation")
+            }
           />
-          <Field
-            label={t("pdf.manufacturer")}
-            value={certificate.standard.manufacturer}
-          />
-          <Field label={t("pdf.model")} value={certificate.standard.model} />
-          <Field label={t("pdf.serial")} value={certificate.standard.serial} />
-          <Field
-            label={t("pdf.calibrationCertificate")}
-            value={certificate.standard.certNumber}
-          />
-          <Field
-            label={t("pdf.calibrationDate")}
-            value={certificate.standard.calibrationDate}
-          />
-          <Field
-            label={t("pdf.validTo")}
-            value={certificate.standard.validTo}
-            last
-          />
-        </View>
+        ))}
       </View>
       <View style={styles.col}>
         <SignatureSlot
@@ -1584,6 +1875,7 @@ export function ReportDocument({
       modificationDate={report.documentDate}
     >
       <CoverPage report={report} locale={locale} />
+      <ScopePage report={report} locale={locale} />
       {report.certificates.map((certificate) =>
         certificate.layout === CertificateLayout.TEST_READINGS ? (
           <TestReadingsPage
@@ -1608,6 +1900,9 @@ export function ReportDocument({
           />
         )
       )}
+      {/* Las condiciones comerciales cierran el documento: aplican al reporte
+          completo, no a una sección. */}
+      <TermsPage report={report} locale={locale} />
     </Document>
   );
 }

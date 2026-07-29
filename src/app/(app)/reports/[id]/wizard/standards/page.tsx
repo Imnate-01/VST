@@ -23,7 +23,12 @@ export default async function WizardStandardsPage({ params }: Props) {
   const existingByType = new Map(
     data.certificates.map((certificate) => [
       certificate.certificateType,
-      certificate.primaryStandard.standardInstrumentId,
+      {
+        primary: certificate.primaryStandard.standardInstrumentId,
+        additional: certificate.additionalStandards.map(
+          (link) => link.reportStandard.standardInstrumentId
+        ),
+      },
     ])
   );
 
@@ -38,16 +43,25 @@ export default async function WizardStandardsPage({ params }: Props) {
         manufacturer: standard.manufacturer,
         model: standard.model,
         serialNumber: standard.serialNumber,
+        certificationStatus: standard.certificationStatus,
         calibrationCertNumber: standard.calibrationCertNumber,
-        calibrationDate: standard.calibrationDate.toISOString(),
-        calibrationExpiresAt: standard.calibrationExpiresAt.toISOString(),
-        expiredForServiceDate: standard.calibrationExpiresAt <= data.report.serviceDate,
+        calibrationDate: standard.calibrationDate?.toISOString() ?? null,
+        calibrationExpiresAt: standard.calibrationExpiresAt?.toISOString() ?? null,
+        expiredForServiceDate:
+          standard.certificationStatus === "CERTIFIED" &&
+          Boolean(
+            standard.calibrationExpiresAt &&
+              standard.calibrationExpiresAt <= data.report.serviceDate
+          ),
+        unavailableForReport: standard.certificationStatus === "PENDING",
       }))}
       initialValues={{
         reportId: data.report.id,
         standards: data.requiredTypes.map((certificateType) => ({
           certificateType,
-          standardInstrumentId: existingByType.get(certificateType) ?? "",
+          standardInstrumentId: existingByType.get(certificateType)?.primary ?? "",
+          additionalStandardInstrumentIds:
+            existingByType.get(certificateType)?.additional ?? [],
         })),
       }}
     />

@@ -133,6 +133,7 @@ export async function saveMeasurement(
       statusReason: calculated.statusReason,
       points: calculated.points.map((point) => ({
         kind: point.kind,
+        notApplicable: point.notApplicable,
         conditionValue: decimalToStringOrNull(point.conditionValue),
         targetNominal: decimalToStringOrNull(point.targetNominal),
         asFoundReference: decimalToStringOrNull(point.asFoundReference),

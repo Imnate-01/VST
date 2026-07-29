@@ -182,6 +182,9 @@ const es = {
   "admin.alerts": "Alertas y acciones recomendadas",
   "admin.expiredStandards": "{count} instrumentos patrón vencidos",
   "admin.blockSigning": "Bloquean la firma hasta que se renueven.",
+  "admin.pendingStandards": "{count} instrumentos pendientes de certificación",
+  "admin.completeCertification":
+    "Completa sus datos de certificación antes de usarlos en reportes.",
   "admin.openStandards": "Abrir instrumentos",
   "admin.oldDrafts": "{count} borradores con más de 7 días",
   "admin.nudgeEngineers": "Solicita a los ingenieros completar o descartar estos reportes.",
@@ -233,6 +236,14 @@ const es = {
   "standardsAdmin.allValidity": "Todas las vigencias",
   "standardsAdmin.description": "Descripción",
   "standardsAdmin.calibrationDate": "Fecha de calibración",
+  "standardsAdmin.certificationStatus": "Estado de certificación",
+  "standardsAdmin.certified": "Certificado",
+  "standardsAdmin.notApplicable": "N/A",
+  "standardsAdmin.pendingCertification": "Pendiente de certificación",
+  "standardsAdmin.notApplicableHelp":
+    "El certificado y las fechas no aplican para este instrumento.",
+  "standardsAdmin.pendingCertificationHelp":
+    "El instrumento se mostrará en el catálogo, pero no podrá seleccionarse en reportes hasta completar su certificación.",
   "standardsAdmin.edit": "Editar instrumento",
   "standardsAdmin.create": "Crear instrumento",
   "standardsAdmin.save": "Guardar instrumento",
@@ -352,6 +363,13 @@ const es = {
   "standards.description": "Selecciona un instrumento activo con calibración vigente en la fecha de servicio {date}.",
   "standards.empty": "No se requieren tipos de certificado porque no hay dispositivos incluidos. Puedes finalizar el Sprint 2 sin crear certificados base.",
   "standards.select": "Selecciona un instrumento",
+  "standards.primary": "Patrón principal",
+  "standards.additional": "Patrones complementarios",
+  "standards.additionalHint":
+    "Agrega los instrumentos que acompañan a la medición, como el peso patrón que verifica la báscula. Cada uno se imprime con su propio bloque de validación.",
+  "standards.addAdditional": "Agregar patrón",
+  "standards.removeAdditional": "Quitar {name}",
+  "standards.noAdditional": "Sin patrones complementarios.",
   "standards.finish": "Finalizar Sprint 2",
   "certificate.suffix": "{name}",
   "certificate.missing": "No existe una sección base de este tipo en el reporte.",
@@ -388,6 +406,8 @@ const es = {
   "measurement.savedPending": "{count} guardadas como pendientes",
   "measurement.adjustedCount": "{count} requirieron ajuste",
   "measurement.adjusted": "Ajustado",
+  "measurement.notApplicablePoint": "Este punto no aplica (N/A)",
+  "measurement.notApplicableDevice": "Sin puntos aplicables",
   "measurement.tolerance": "Tolerancia",
   "measurement.lastStatus": "Último estado",
   "measurement.readingAsFound": "Lectura (Como se encontró)",
@@ -428,6 +448,7 @@ const es = {
   "validation.max500": "Máximo 500 caracteres",
   "validation.reasonRequired": "El motivo es obligatorio cuando se excluye un dispositivo",
   "validation.selectStandard": "Selecciona un instrumento patrón",
+  "validation.duplicateStandard": "Ese instrumento ya está seleccionado en esta sección",
   "validation.validNumber": "Ingresa un número válido",
   "validation.max100": "Máximo 100 caracteres",
   "validation.pointRequired": "Un dispositivo debe tener al menos un punto",
@@ -470,9 +491,28 @@ const es = {
   "pdf.countersign": "A refrendar por el cliente al aceptar el reporte.",
   "pdf.nameRole": "Nombre y cargo",
   "pdf.referenceTraceability": "Patrones de referencia y trazabilidad",
+  "pdf.traceabilityLead":
+    "Instrumentos patrón usados durante el servicio, con la sección del reporte que respaldan y la vigencia de su certificado de calibración.",
   "pdf.standard": "Patrón",
   "pdf.certificate": "Certificado",
+  "pdf.usedIn": "Usado en",
   "pdf.validTo": "Vigente hasta",
+  "pdf.scopeTraceability": "Alcance y trazabilidad",
+  "pdf.checklistTitle": "Checklist de dispositivos",
+  "pdf.checklistLead":
+    "Dispositivos considerados para el servicio. Los excluidos conservan su fila con el motivo de exclusión.",
+  "pdf.checklistIncluded": "{count} de {total} incluidos",
+  "pdf.deviceType": "Tipo",
+  "pdf.tolerance": "Tolerancia",
+  "pdf.certificates": "Certificados",
+  "pdf.scope": "Alcance",
+  "pdf.included": "Incluido",
+  "pdf.excluded": "Excluido",
+  "pdf.exclusionReason": "Motivo de exclusión",
+  "pdf.checklistEmpty": "El reporte no tiene dispositivos en el checklist.",
+  "pdf.termsTitle": "Términos y condiciones",
+  "pdf.termsLead":
+    "Las condiciones comerciales se reproducen en su idioma original y prevalecen sobre cualquier traducción.",
   "pdf.confidential": "© SIG - Confidencial - solo para el cliente indicado",
   "pdf.generated": "Generado {date}",
   "pdf.observation": "Observación",
@@ -548,6 +588,12 @@ const es = {
   "review.blockedBySectionsOne": "Firma la sección pendiente antes de firmar el reporte.",
   "review.blockedBySections": "Firma las {count} secciones pendientes antes de firmar el reporte.",
   "review.readyToSign": "Todas las secciones están firmadas. Ya puedes firmar el reporte.",
+  "review.staleTitle": "Hay firmas que ya no corresponden al contenido",
+  "review.staleDescription":
+    "El reporte cambió después de firmarse. Vuelve a firmar las secciones marcadas y el reporte antes de enviarlo.",
+  "review.staleSection": "Firma desactualizada",
+  "review.staleReportSignature": "La firma del reporte quedó desactualizada.",
+  "review.submitBlockedStale": "Vuelve a firmar lo que quedó desactualizado antes de enviar.",
   "review.noCertificates": "Aún no hay secciones que revisar. Completa el paso Instrumentos para crearlas.",
   "review.submitTitle": "Enviar y generar PDF",
   "review.submitDescription": "Genera el PDF definitivo, lo archiva y cierra el reporte. Una vez enviado ya no se puede editar.",
@@ -735,6 +781,9 @@ const en: Record<MessageKey, string> = {
   "admin.alerts": "Alerts & recommended actions",
   "admin.expiredStandards": "{count} standards expired",
   "admin.blockSigning": "They block signing until renewed.",
+  "admin.pendingStandards": "{count} instruments pending certification",
+  "admin.completeCertification":
+    "Complete their certification data before using them in reports.",
   "admin.openStandards": "Open standards",
   "admin.oldDrafts": "{count} drafts older than 7 days",
   "admin.nudgeEngineers": "Nudge engineers to complete or discard these reports.",
@@ -786,6 +835,14 @@ const en: Record<MessageKey, string> = {
   "standardsAdmin.allValidity": "All validity states",
   "standardsAdmin.description": "Description",
   "standardsAdmin.calibrationDate": "Calibration date",
+  "standardsAdmin.certificationStatus": "Certification status",
+  "standardsAdmin.certified": "Certified",
+  "standardsAdmin.notApplicable": "N/A",
+  "standardsAdmin.pendingCertification": "Pending certification",
+  "standardsAdmin.notApplicableHelp":
+    "Certificate and calibration dates do not apply to this instrument.",
+  "standardsAdmin.pendingCertificationHelp":
+    "The instrument will remain visible in the catalog but cannot be selected in reports until certification is completed.",
   "standardsAdmin.edit": "Edit instrument",
   "standardsAdmin.create": "Create instrument",
   "standardsAdmin.save": "Save instrument",
@@ -905,6 +962,13 @@ const en: Record<MessageKey, string> = {
   "standards.description": "Select an active instrument with a valid calibration on the service date, {date}.",
   "standards.empty": "No certificate types are required because there are no included devices. You can complete Sprint 2 without creating base certificates.",
   "standards.select": "Select an instrument",
+  "standards.primary": "Primary standard",
+  "standards.additional": "Additional standards",
+  "standards.additionalHint":
+    "Add the instruments that support the measurement, such as the precision weight that verifies the scale. Each one prints its own validation block.",
+  "standards.addAdditional": "Add standard",
+  "standards.removeAdditional": "Remove {name}",
+  "standards.noAdditional": "No additional standards.",
   "standards.finish": "Complete Sprint 2",
   "certificate.suffix": "{name}",
   "certificate.missing": "This report does not have a base section of this type.",
@@ -941,6 +1005,8 @@ const en: Record<MessageKey, string> = {
   "measurement.savedPending": "{count} saved as pending",
   "measurement.adjustedCount": "{count} required adjustment",
   "measurement.adjusted": "Adjusted",
+  "measurement.notApplicablePoint": "This point does not apply (N/A)",
+  "measurement.notApplicableDevice": "No applicable points",
   "measurement.tolerance": "Tolerance",
   "measurement.lastStatus": "Last status",
   "measurement.readingAsFound": "Reading (As Found)",
@@ -981,6 +1047,7 @@ const en: Record<MessageKey, string> = {
   "validation.max500": "Maximum 500 characters",
   "validation.reasonRequired": "A reason is required when a device is excluded",
   "validation.selectStandard": "Select a reference instrument",
+  "validation.duplicateStandard": "That instrument is already selected in this section",
   "validation.validNumber": "Enter a valid number",
   "validation.max100": "Maximum 100 characters",
   "validation.pointRequired": "A device must have at least one point",
@@ -1023,9 +1090,28 @@ const en: Record<MessageKey, string> = {
   "pdf.countersign": "To be countersigned by the client on acceptance.",
   "pdf.nameRole": "Name & role",
   "pdf.referenceTraceability": "Reference standards and traceability",
+  "pdf.traceabilityLead":
+    "Reference instruments used during the service, with the report section they support and the validity of their calibration certificate.",
   "pdf.standard": "Standard",
   "pdf.certificate": "Certificate",
+  "pdf.usedIn": "Used in",
   "pdf.validTo": "Valid to",
+  "pdf.scopeTraceability": "Scope and traceability",
+  "pdf.checklistTitle": "Device checklist",
+  "pdf.checklistLead":
+    "Devices considered for this service. Excluded devices keep their row along with the exclusion reason.",
+  "pdf.checklistIncluded": "{count} of {total} included",
+  "pdf.deviceType": "Type",
+  "pdf.tolerance": "Tolerance",
+  "pdf.certificates": "Certificates",
+  "pdf.scope": "Scope",
+  "pdf.included": "Included",
+  "pdf.excluded": "Excluded",
+  "pdf.exclusionReason": "Exclusion reason",
+  "pdf.checklistEmpty": "This report has no devices in the checklist.",
+  "pdf.termsTitle": "Terms and Conditions",
+  "pdf.termsLead":
+    "The commercial terms are reproduced in their original language and prevail over any translation.",
   "pdf.confidential": "© SIG - Confidential - for the named client only",
   "pdf.generated": "Generated {date}",
   "pdf.observation": "Observation",
@@ -1101,6 +1187,12 @@ const en: Record<MessageKey, string> = {
   "review.blockedBySectionsOne": "Sign the pending section before signing the report.",
   "review.blockedBySections": "Sign the {count} pending sections before signing the report.",
   "review.readyToSign": "Every section is signed. You can now sign the report.",
+  "review.staleTitle": "Some signatures no longer match the content",
+  "review.staleDescription":
+    "The report changed after it was signed. Sign the flagged sections and the report again before submitting.",
+  "review.staleSection": "Signature out of date",
+  "review.staleReportSignature": "The report signature is out of date.",
+  "review.submitBlockedStale": "Sign whatever went out of date before submitting.",
   "review.noCertificates": "There are no sections to review yet. Complete the Instruments step to create them.",
   "review.submitTitle": "Submit & generate PDF",
   "review.submitDescription": "Generates the final PDF, archives it and closes the report. Once submitted it can no longer be edited.",
@@ -1160,6 +1252,8 @@ export function localizeServerError(message: string, locale: Locale): string {
     "La firma excede el tamaño máximo de 1 MB.": "The signature exceeds the 1 MB maximum size.",
     "Firma el reporte antes de generar el PDF final.": "Sign the report before generating the final PDF.",
     "El reporte ya fue enviado.": "The report has already been submitted.",
+    "El contenido cambió después de firmar: vuelve a firmar el reporte.":
+      "The content changed after signing: sign the report again.",
     "Reporte no encontrado.": "Report not found.",
     "Tolerancia porcentual sobre una referencia de 0: la tolerancia absoluta sería 0 y ninguna lectura podría pasar.": "A percentage tolerance cannot be evaluated against a zero reference: the absolute tolerance would be zero and no reading could pass.",
     "Falta BLOB_READ_WRITE_TOKEN: no se puede almacenar el PDF final. Configúralo en el entorno.": "BLOB_READ_WRITE_TOKEN is missing, so the final PDF cannot be stored. Configure it in the environment.",
@@ -1178,6 +1272,10 @@ export function localizeServerError(message: string, locale: Locale): string {
   if (match) return `Point ${match[1]} does not apply to the ${match[2]} certificate.`;
   match = message.match(/^Faltan firmar (\d+) certificado\(s\) antes de firmar el reporte\.$/);
   if (match) return `${match[1]} certificate(s) must be signed before signing the report.`;
+  match = message.match(
+    /^El contenido cambió después de firmar: vuelve a firmar (.+) y el reporte\.$/
+  );
+  if (match) return `The content changed after signing: sign ${match[1]} and the report again.`;
 
   return message;
 }

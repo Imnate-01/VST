@@ -155,21 +155,25 @@ function InputCell({
   registration,
   placeholder,
   tone = "capture",
+  disabled,
 }: {
   registration: ReturnType<ReturnType<typeof useForm<UpsertMeasurementInput>>["register"]>;
   placeholder?: string;
   /** "capture" = amarillo (lo escribe el técnico); "nominal" = blanco (default). */
   tone?: "capture" | "nominal";
+  disabled?: boolean;
 }) {
   return (
     <input
       inputMode="decimal"
-      placeholder={placeholder}
+      placeholder={disabled ? "N/A" : placeholder}
+      disabled={disabled}
       className={cn(
         "tabular h-8 w-full px-3 text-right font-medium text-foreground outline-none ring-inset transition-colors focus:bg-white focus:ring-2 focus:ring-primary",
         tone === "capture" &&
           "bg-muted/70 placeholder:font-normal placeholder:text-muted-foreground hover:bg-muted",
-        tone === "nominal" && "bg-white placeholder:font-normal placeholder:text-muted-foreground"
+        tone === "nominal" && "bg-white placeholder:font-normal placeholder:text-muted-foreground",
+        disabled && "cursor-not-allowed bg-muted/40 text-muted-foreground hover:bg-muted/40"
       )}
       {...registration}
     />
@@ -207,6 +211,7 @@ function PassBlock({
   acceptanceLimit,
   eval: evaluated,
   register,
+  notApplicable,
 }: {
   title: string;
   readingLabel: string;
@@ -217,6 +222,7 @@ function PassBlock({
   acceptanceLimit: string;
   eval: ReturnType<typeof evalPass>;
   register: ReturnType<typeof useForm<UpsertMeasurementInput>>["register"];
+  notApplicable?: boolean;
 }) {
   const { t } = useLanguage();
   return (
@@ -228,13 +234,14 @@ function PassBlock({
           <InputCell
             registration={register(`${base}.${readingField}` as never)}
             placeholder={unit}
+            disabled={notApplicable}
           />
         </td>
       </tr>
       <tr className="border-b border-sig-100">
         <LabelCell>{t("measurement.acceptanceLimit")}</LabelCell>
         <td className="p-0">
-          <DisplayCell value={acceptanceLimit} />
+          <DisplayCell value={notApplicable ? "" : acceptanceLimit} />
         </td>
       </tr>
       <tr className="border-b border-sig-100">
@@ -242,15 +249,23 @@ function PassBlock({
           {t("measurement.passFail")}
         </td>
         <td className="p-0">
-          <StatusCell status={evaluated.status} />
+          {notApplicable ? (
+            <DisplayCell value="N/A" />
+          ) : (
+            <StatusCell status={evaluated.status} />
+          )}
         </td>
       </tr>
       <tr className="border-b border-sig-100">
         <LabelCell>{deviationLabel}</LabelCell>
         <td className="p-0">
           <DisplayCell
-            value={evaluated.deviation ? `${evaluated.deviation} ${unit}` : ""}
-            status={evaluated.status}
+            value={
+              notApplicable || !evaluated.deviation
+                ? ""
+                : `${evaluated.deviation} ${unit}`
+            }
+            status={notApplicable ? undefined : evaluated.status}
           />
         </td>
       </tr>
@@ -279,6 +294,7 @@ function PointTable({
   const base = `measurements.${measurementIndex}.points.${pointIndex}`;
   const unit = cleanUnit(row.toleranceUnit);
   const quantity = getMeasuredQuantity(certificateType, locale);
+  const notApplicable = values?.notApplicable ?? false;
 
   const asFound = evalPass({
     reference: values?.targetNominal,
@@ -305,12 +321,17 @@ function PointTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-input bg-white">
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border border-input bg-white",
+        notApplicable && "opacity-60"
+      )}
+    >
       <div className="flex items-center justify-between bg-primary px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-white">
           {getPointKindLabel(kind, locale)}
         </span>
-        {requiredAdjustment && (
+        {requiredAdjustment && !notApplicable && (
           <span className="inline-flex items-center gap-1 rounded-md border border-warning/25 bg-warning-muted px-2 py-0.5 text-[10px] font-semibold text-warning">
             <TriangleAlert className="h-3 w-3" aria-hidden="true" />
             {t("measurement.adjusted")}
@@ -321,13 +342,27 @@ function PointTable({
       {/* Fuera de la tabla: un <input> no puede ser hijo directo de <tbody>. */}
       <input type="hidden" {...register(`${base}.kind` as never)} />
 
+      {/* Un punto que no aplica se sigue mostrando, atenuado: el certificado
+          declara explícitamente que ahí no había nada que medir. */}
+      <label className="flex cursor-pointer items-center gap-2 border-b border-sig-100 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 cursor-pointer rounded border-input accent-primary"
+          {...register(`${base}.notApplicable` as never)}
+        />
+        {t("measurement.notApplicablePoint")}
+      </label>
+
       <table className="w-full border-collapse text-xs text-muted-foreground">
         <tbody>
           {getConditionLabel(certificateType, locale) && (
             <tr className="border-b border-sig-100">
               <LabelCell>{getConditionLabel(certificateType, locale)}</LabelCell>
               <td className="p-0">
-                <InputCell registration={register(`${base}.conditionValue` as never)} />
+                <InputCell
+                  registration={register(`${base}.conditionValue` as never)}
+                  disabled={notApplicable}
+                />
               </td>
             </tr>
           )}
@@ -339,6 +374,7 @@ function PointTable({
                 registration={register(`${base}.targetNominal` as never)}
                 placeholder={unit}
                 tone="nominal"
+                disabled={notApplicable}
               />
             </td>
           </tr>
@@ -353,6 +389,7 @@ function PointTable({
             acceptanceLimit={acceptanceLimit(asFound.toleranceAbsolute)}
             eval={asFound}
             register={register}
+            notApplicable={notApplicable}
           />
 
           <PassBlock
@@ -365,6 +402,7 @@ function PointTable({
             acceptanceLimit={acceptanceLimit(asLeft.toleranceAbsolute)}
             eval={asLeft}
             register={register}
+            notApplicable={notApplicable}
           />
         </tbody>
       </table>
