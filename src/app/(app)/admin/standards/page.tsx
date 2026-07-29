@@ -5,7 +5,11 @@ import { prisma } from "@/server/db";
 export default async function AdminStandardsPage() {
   await requireAdmin();
   const standards = await prisma.standardInstrument.findMany({
-    orderBy: [{ active: "desc" }, { calibrationExpiresAt: "asc" }],
+    orderBy: [
+      { active: "desc" },
+      { certificationStatus: "asc" },
+      { calibrationExpiresAt: "asc" },
+    ],
     include: { _count: { select: { reportStandards: true } } },
   });
 
@@ -15,9 +19,11 @@ export default async function AdminStandardsPage() {
     manufacturer: standard.manufacturer,
     model: standard.model,
     serialNumber: standard.serialNumber,
+    certificationStatus: standard.certificationStatus,
     calibrationCertNumber: standard.calibrationCertNumber,
-    calibrationDate: standard.calibrationDate.toISOString().slice(0, 10),
-    calibrationExpiresAt: standard.calibrationExpiresAt.toISOString().slice(0, 10),
+    calibrationDate: standard.calibrationDate?.toISOString().slice(0, 10) ?? null,
+    calibrationExpiresAt:
+      standard.calibrationExpiresAt?.toISOString().slice(0, 10) ?? null,
     active: standard.active,
     linkedReports: standard._count.reportStandards,
   }));

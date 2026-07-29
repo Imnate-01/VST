@@ -15,7 +15,7 @@ model User {
   email        String   @unique
   passwordHash String
   name         String
-  title        String   // "Field Service Engineer II"
+  title        String // "Field Service Engineer II"
   role         UserRole @default(ENGINEER)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -36,7 +36,7 @@ enum UserRole {
 model FillerModel {
   id     String  @id @default(cuid())
   code   String  @unique // "SUREFILL_100"
-  name   String          // "SureFill 100"
+  name   String // "SureFill 100"
   active Boolean @default(true)
 
   devices DeviceCatalog[]
@@ -61,14 +61,14 @@ model Filler {
 }
 
 model DeviceCatalog {
-  id                 String   @id @default(cuid())
+  id                 String     @id @default(cuid())
   modelId            String
   tagNumber          String
   description        String
   deviceType         DeviceType
-  toleranceValue     Decimal  @db.Decimal(10, 4)
+  toleranceValue     Decimal    @db.Decimal(10, 4)
   toleranceUnit      String // "°C", "PSI", "Hg"
-  toleranceIsPercent Boolean  @default(false)
+  toleranceIsPercent Boolean    @default(false)
 
   // Un dispositivo puede aparecer en más de un certificado.
   // Ej: los tags 1403 / 1411 (Metering Pump MOT-1 y MOT-2) se calibran tanto en
@@ -87,28 +87,29 @@ model DeviceCatalog {
 
 enum DeviceType {
   RTD // Temperature
-  PS  // Pressure
-  FM  // Flow
-  HS  // Humidity
-  US  // Ultrasonic
+  PS // Pressure
+  FM // Flow
+  HS // Humidity
+  US // Ultrasonic
   MOT // Motor / Metering Pump
 }
 
 /// Un tipo por página de certificado del reporte VST.
+/// Las páginas son las del molde base 2026 (VST SF100P_BASE_2026).
 enum CertificateType {
   TEMPERATURE // p.3
   CHAMBER_VST_AIR_FLOW // p.4
   CHAMBER_STERILE_AIR_FLOW // p.5
   PRESSURE // p.6
   VACUUM_TANK_PRESSURE // p.7
-  EOL_FLOW // p.8
-  VAC_FLOW // p.9
-  HUMIDITY // p.10
-  ULTRASONIC // p.11
-  METERING_PUMP_CHAMBER // p.12
-  METERING_PUMP_TUNNEL // p.13
-  EXHAUST // p.14
-  VACUUM_PRESSURE // p.15
+  EOL_FLOW // p.9
+  VAC_FLOW // p.10
+  HUMIDITY // p.11
+  ULTRASONIC // p.12
+  METERING_PUMP_CHAMBER // p.13
+  METERING_PUMP_TUNNEL // p.14
+  EXHAUST // p.15
+  VACUUM_PRESSURE // p.8
 }
 
 /// Forma de captura de un certificado. Los 13 tipos se reducen a 5 layouts,
@@ -142,16 +143,23 @@ enum PointKind {
 
 // ============ INSTRUMENTOS PATRÓN ============
 
+enum StandardCertificationStatus {
+  CERTIFIED
+  NOT_APPLICABLE
+  PENDING
+}
+
 model StandardInstrument {
-  id                    String   @id @default(cuid())
-  description           String   // "Precision Pressure Gauge"
-  manufacturer          String   // "FLUKE"
-  model                 String   // "700G06"
+  id                    String                      @id @default(cuid())
+  description           String // "Precision Pressure Gauge"
+  manufacturer          String // "FLUKE"
+  model                 String // "700G06"
   serialNumber          String
-  calibrationCertNumber String
-  calibrationDate       DateTime
-  calibrationExpiresAt  DateTime
-  active                Boolean  @default(true)
+  certificationStatus   StandardCertificationStatus @default(CERTIFIED)
+  calibrationCertNumber String?
+  calibrationDate       DateTime?
+  calibrationExpiresAt  DateTime?
+  active                Boolean                     @default(true)
 
   reportStandards ReportStandard[]
 
@@ -161,9 +169,9 @@ model StandardInstrument {
 // ============ REPORTES ============
 
 model Report {
-  id             String       @id @default(cuid())
-  reportNumber   String       @unique // "CR_Nestle_20260512_CC_Rev0"
-  revisionNumber Int          @default(0)
+  id             String @id @default(cuid())
+  reportNumber   String @unique // "CR_Nestle_20260512_CC_Rev0"
+  revisionNumber Int    @default(0)
 
   fillerId     String
   serviceDate  DateTime
@@ -217,13 +225,16 @@ model ReportDeviceSelection {
   // Snapshots para inmutabilidad:
   tagNumberSnapshot          String
   descriptionSnapshot        String
+  /// El tipo se imprime en el checklist, así que también se congela: leerlo del
+  /// catálogo vivo hacía que editar el catálogo cambiara un reporte ya firmado.
+  deviceTypeSnapshot         DeviceType
   toleranceValueSnapshot     Decimal           @db.Decimal(10, 4)
   toleranceUnitSnapshot      String
   toleranceIsPercentSnapshot Boolean
   certificateTypesSnapshot   CertificateType[]
   /// Orden de las columnas en el certificado. El PDF original no las ordena por
   /// tag: Temperature va Vaporizer, Pre-Heater, Tunnel, Chamber.
-  displayOrderSnapshot Int @default(0)
+  displayOrderSnapshot       Int               @default(0)
 
   report        Report        @relation(fields: [reportId], references: [id], onDelete: Cascade)
   deviceCatalog DeviceCatalog @relation(fields: [deviceCatalogId], references: [id])
@@ -241,18 +252,20 @@ model ReportStandard {
   standardInstrumentId String
 
   // Snapshots:
-  descriptionSnapshot  String
-  manufacturerSnapshot String
-  modelSnapshot        String
-  serialSnapshot       String
-  certNumberSnapshot   String
-  calDateSnapshot      DateTime
-  calExpiresAtSnapshot DateTime
+  descriptionSnapshot         String
+  manufacturerSnapshot        String
+  modelSnapshot               String
+  serialSnapshot              String
+  certificationStatusSnapshot StandardCertificationStatus @default(CERTIFIED)
+  certNumberSnapshot          String?
+  calDateSnapshot             DateTime?
+  calExpiresAtSnapshot        DateTime?
 
   report             Report             @relation(fields: [reportId], references: [id], onDelete: Cascade)
   standardInstrument StandardInstrument @relation(fields: [standardInstrumentId], references: [id])
 
   certificatesAsPrimary Certificate[]
+  certificateLinks      CertificateStandard[]
 
   @@unique([reportId, standardInstrumentId])
 }
@@ -280,11 +293,35 @@ model Certificate {
   report          Report         @relation(fields: [reportId], references: [id], onDelete: Cascade)
   primaryStandard ReportStandard @relation(fields: [primaryStandardId], references: [id])
 
-  measurements     CertificateMeasurement[]
-  verificationRows VerificationRow[]
-  signatures       Signature[]
+  measurements        CertificateMeasurement[]
+  verificationRows    VerificationRow[]
+  signatures          Signature[]
+  additionalStandards CertificateStandard[]
 
   @@unique([reportId, certificateType])
+}
+
+/// Patrones que respaldan un certificado ADEMÁS del principal.
+///
+/// Las bombas dosificadoras y el sensor ultrasónico se miden con dos
+/// instrumentos: la báscula y el peso patrón que la verifica. La plantilla
+/// imprime un bloque de validación por cada uno, así que la trazabilidad tiene
+/// que nombrarlos a los dos.
+///
+/// El principal sigue viviendo en `Certificate.primaryStandardId`: es el
+/// instrumento que toma la medición, y garantiza que un certificado nunca
+/// quede sin patrón. Acá solo van los complementarios.
+model CertificateStandard {
+  id               String @id @default(cuid())
+  certificateId    String
+  reportStandardId String
+  displayOrder     Int    @default(0)
+
+  certificate    Certificate    @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  reportStandard ReportStandard @relation(fields: [reportStandardId], references: [id], onDelete: Cascade)
+
+  @@unique([certificateId, reportStandardId])
+  @@index([reportStandardId])
 }
 
 enum CertificateStatus {
@@ -298,7 +335,7 @@ enum CertificateStatus {
 /// Los valores medidos viven en `points` (RANGE / SETPOINT / SINGLE_POINT)
 /// o en `readings` (TEST_READINGS), según el layout del certificado.
 model CertificateMeasurement {
-  id                String @id @default(cuid())
+  id                String  @id @default(cuid())
   certificateId     String
   deviceSelectionId String
   notes             String?
@@ -360,6 +397,14 @@ model MeasurementPoint {
   asLeftDeviation   Decimal? @db.Decimal(10, 4)
   asLeftInTolerance Boolean?
 
+  /// El punto no aplica a este dispositivo. En el certificado de temperatura,
+  /// los RTD de túnel y cámara solo se calibran en el punto alto: la plantilla
+  /// imprime N/A en toda la fila del punto bajo.
+  ///
+  /// Un punto N/A no se evalúa ni entra al Pass/Fail. Si todos los puntos de un
+  /// dispositivo son N/A, la medición queda en estado NA y no cuenta como canal.
+  notApplicable Boolean @default(false)
+
   measurement CertificateMeasurement @relation(fields: [measurementId], references: [id], onDelete: Cascade)
 
   @@unique([measurementId, kind])
@@ -405,8 +450,8 @@ model VerificationRow {
 // ============ FIRMAS ============
 
 model Signature {
-  id                String     @id @default(cuid())
-  reportId          String
+  id           String     @id @default(cuid())
+  reportId     String
   signerUserId String
   signerRole   SignerRole
 
@@ -417,12 +462,12 @@ model Signature {
 
   signatureImageUrl String
   /// SHA-256 del contenido firmado. Si el contenido cambia, la firma se revoca.
-  payloadHash String
-  signedAt    DateTime  @default(now())
-  ipAddress   String?
-  userAgent   String?
-  revoked     Boolean   @default(false)
-  revokedAt   DateTime?
+  payloadHash       String
+  signedAt          DateTime  @default(now())
+  ipAddress         String?
+  userAgent         String?
+  revoked           Boolean   @default(false)
+  revokedAt         DateTime?
 
   report      Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
   signer      User         @relation(fields: [signerUserId], references: [id])
@@ -453,9 +498,9 @@ enum SignerRole {
 
 model AuditLog {
   id         String   @id @default(cuid())
-  entityType String   // "Report", "Certificate", etc.
+  entityType String // "Report", "Certificate", etc.
   entityId   String
-  action     String   // "create", "update", "submit", "sign"
+  action     String // "create", "update", "submit", "sign"
   userId     String
   changes    Json?
   ipAddress  String?

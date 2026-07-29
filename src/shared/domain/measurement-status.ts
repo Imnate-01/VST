@@ -50,6 +50,7 @@ export function decimalToStringOrNull(value: Decimal | null): string | null {
 
 export type CalculatedPoint = {
   kind: PointKind;
+  notApplicable: boolean;
   conditionValue: Decimal | null;
   targetNominal: Decimal | null;
   asFoundReference: Decimal | null;
@@ -70,9 +71,29 @@ export type CalculatedMeasurement = {
 };
 
 function rawPoint(input: MeasurementPointInput): CalculatedPoint {
+  // Un punto que no aplica se guarda vacío aunque el formulario traiga un
+  // objetivo por defecto: dejar el número sugerido haría creer que se midió.
+  if (input.notApplicable) {
+    return {
+      kind: input.kind,
+      notApplicable: true,
+      conditionValue: null,
+      targetNominal: null,
+      asFoundReference: null,
+      asFoundReading: null,
+      asFoundDeviation: null,
+      asFoundInTolerance: null,
+      asLeftReference: null,
+      asLeftReading: null,
+      asLeftDeviation: null,
+      asLeftInTolerance: null,
+    };
+  }
+
   const targetNominal = toDecimalOrNull(input.targetNominal);
   return {
     kind: input.kind,
+    notApplicable: false,
     conditionValue: toDecimalOrNull(input.conditionValue),
     targetNominal,
     // Las columnas se conservan para compatibilidad histórica. Desde ahora el
@@ -122,6 +143,18 @@ export function calculateMeasurementStatus(params: {
   toleranceIsPercent: boolean;
 }): CalculatedMeasurement {
   const rawPoints = params.input.points.map(rawPoint);
+  // Los puntos declarados N/A quedan fuera de todo el cálculo: no se completan,
+  // no se evalúan y no aportan al Pass/Fail.
+  const applicablePoints = rawPoints.filter((point) => !point.notApplicable);
+
+  if (applicablePoints.length === 0) {
+    return {
+      points: rawPoints,
+      status: MeasurementStatus.NA,
+      statusReason: "Todos los puntos del dispositivo están marcados como N/A",
+      requiredAdjustment: false,
+    };
+  }
 
   if (
     !hasCompleteCertificateMeasurement(
@@ -135,7 +168,7 @@ export function calculateMeasurementStatus(params: {
     );
   }
 
-  const passes = rawPoints.map((point) => ({
+  const passes = applicablePoints.map((point) => ({
     found: passState(point.asFoundReference, point.asFoundReading),
     left: passState(point.asLeftReference, point.asLeftReading),
   }));
@@ -159,7 +192,7 @@ export function calculateMeasurementStatus(params: {
   let evaluated;
   try {
     evaluated = evaluatePointSet(
-      rawPoints.map((point) => ({
+      applicablePoints.map((point) => ({
         kind: point.kind,
         input: {
           targetNominal: point.targetNominal,
@@ -194,7 +227,7 @@ export function calculateMeasurementStatus(params: {
   );
 
   const points: CalculatedPoint[] = rawPoints.map((point) => {
-    const result = resultByKind.get(point.kind);
+    const result = point.notApplicable ? null : resultByKind.get(point.kind);
     if (!result) return point;
 
     return {

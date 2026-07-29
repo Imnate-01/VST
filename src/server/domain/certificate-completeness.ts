@@ -5,6 +5,8 @@ type PointValue = string | number | { toString(): string } | null | undefined;
 
 export type CompletenessPoint = {
   kind: PointKind;
+  /** Declarado como no aplicable: no hay nada que capturar en este punto. */
+  notApplicable?: boolean;
   conditionValue?: PointValue;
   targetNominal?: PointValue;
   asFoundReading?: PointValue;
@@ -43,6 +45,9 @@ export function hasCompleteCertificateMeasurement(
   return config.pointKinds.every((kind) => {
     const point = pointByKind.get(kind);
     if (!point) return false;
+    // Un punto que no aplica está completo por definición: declararlo ES la
+    // captura. Los RTD de túnel y cámara se firman así, sin punto bajo.
+    if (point.notApplicable) return true;
 
     return (
       (!config.conditionLabel || hasValue(point.conditionValue)) &&

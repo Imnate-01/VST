@@ -136,7 +136,12 @@ export default async function ReportDetailPage({ params }: Props) {
                     <div className="text-muted-foreground">
                       {t("report.standard")}: {certificate.primaryStandard.descriptionSnapshot} ·{" "}
                       {t("common.serialAbbr")} {certificate.primaryStandard.serialSnapshot} ·{" "}
-                      {t("common.certificateAbbr")} {certificate.primaryStandard.certNumberSnapshot} ·{" "}
+                      {t("common.certificateAbbr")}{" "}
+                      {certificate.primaryStandard.certificationStatusSnapshot === "PENDING"
+                        ? t("standardsAdmin.pendingCertification")
+                        : certificate.primaryStandard.certNumberSnapshot ??
+                          t("standardsAdmin.notApplicable")}{" "}
+                      ·{" "}
                       {t("report.certificateStatus")} {" "}
                       {certificate.overallStatus === "PASS"
                         ? t("measurement.pass")

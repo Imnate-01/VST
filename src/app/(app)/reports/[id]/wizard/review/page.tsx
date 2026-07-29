@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, Circle, Clock3, PenLine } from "lucide-react";
+import { Check, Circle, Clock3, PenLine, TriangleAlert } from "lucide-react";
 import { requireAuth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { getReportProgress } from "@/server/services/report-progress";
 import { getReportForWizard } from "@/server/services/reports";
+import { findStaleSignatures } from "@/server/services/signatures";
 import { certificateHref, getCertificateLabel } from "@/lib/certificates";
 import type { SectionState } from "@/server/domain/report-progress";
 import { ReportSignatureBlock } from "@/components/report/signature-blocks";
@@ -89,6 +90,13 @@ export default async function ReviewWizardPage({ params }: Props) {
     orderBy: { signedAt: "desc" },
   });
 
+  // Una firma puede seguir activa y ya no corresponder a lo que se imprimiría.
+  // Sin este aviso, la lista de secciones diría "Firmada" y el ingeniero se
+  // enteraría recién al intentar enviar.
+  const stale = await findStaleSignatures(id);
+  const staleTypes = new Set(stale.certificateTypes);
+  const hasStale = staleTypes.size > 0 || stale.report;
+
   const sections = progress.certificates.filter((certificate) => certificate.exists);
 
   return (
@@ -97,6 +105,16 @@ export default async function ReviewWizardPage({ params }: Props) {
         <h1 className="text-2xl font-semibold text-foreground">{t("review.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("review.description")}</p>
       </div>
+
+      {hasStale && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning/25 bg-warning-muted px-4 py-3">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+          <div className="text-sm">
+            <p className="font-semibold text-warning">{t("review.staleTitle")}</p>
+            <p className="mt-1 text-warning">{t("review.staleDescription")}</p>
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -116,13 +134,19 @@ export default async function ReviewWizardPage({ params }: Props) {
               </p>
 
               <ul className="divide-y rounded-lg border">
-                {sections.map((section) => (
+                {sections.map((section) => {
+                  const sectionStale = staleTypes.has(section.certificateType);
+                  // Una firma desactualizada se muestra como pendiente de
+                  // firma, que es exactamente lo que es.
+                  const state = sectionStale ? "pending_signature" : section.state;
+
+                  return (
                   <li
                     key={section.certificateType}
                     className="flex items-center justify-between gap-4 p-4"
                   >
                     <div className="flex items-center gap-3">
-                      <StateIcon state={section.state} />
+                      <StateIcon state={state} />
                       <div>
                         <div className="text-sm font-semibold text-foreground">
                           {getCertificateLabel(section.certificateType, locale)}
@@ -130,20 +154,27 @@ export default async function ReviewWizardPage({ params }: Props) {
                         <div
                           className={cn(
                             "text-xs",
-                            section.complete ? "text-muted-foreground" : "text-warning"
+                            section.complete && !sectionStale
+                              ? "text-muted-foreground"
+                              : "text-warning"
                           )}
                         >
-                          {t(stateLabelKeys[section.state])}
+                          {sectionStale
+                            ? t("review.staleSection")
+                            : t(stateLabelKeys[section.state])}
                         </div>
                       </div>
                     </div>
                     <Button asChild variant="outline" size="sm">
                       <Link href={certificateHref(id, section.certificateType)}>
-                        {section.complete ? t("review.open") : t("common.edit")}
+                        {section.complete && !sectionStale
+                          ? t("review.open")
+                          : t("common.edit")}
                       </Link>
                     </Button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
 
               <p
@@ -177,7 +208,9 @@ export default async function ReviewWizardPage({ params }: Props) {
       <SubmitReportBlock
         reportId={id}
         blockedReason={
-          blockedReason ?? (reportSignature ? null : t("review.submitBlockedSignature"))
+          blockedReason ??
+          (hasStale ? t("review.submitBlockedStale") : null) ??
+          (reportSignature ? null : t("review.submitBlockedSignature"))
         }
       />
 

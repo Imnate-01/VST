@@ -43,9 +43,15 @@ export async function saveStandardInstrument(input: unknown) {
       manufacturer: value.manufacturer,
       model: value.model,
       serialNumber: value.serialNumber,
-      calibrationCertNumber: value.calibrationCertNumber,
-      calibrationDate: utcDate(value.calibrationDate),
-      calibrationExpiresAt: utcDate(value.calibrationExpiresAt),
+      certificationStatus: value.certificationStatus,
+      calibrationCertNumber:
+        value.certificationStatus === "CERTIFIED" ? value.calibrationCertNumber : null,
+      calibrationDate:
+        value.certificationStatus === "CERTIFIED" ? utcDate(value.calibrationDate) : null,
+      calibrationExpiresAt:
+        value.certificationStatus === "CERTIFIED"
+          ? utcDate(value.calibrationExpiresAt)
+          : null,
       active: value.active,
     };
 
@@ -63,8 +69,9 @@ export async function saveStandardInstrument(input: unknown) {
         manufacturer: instrument.manufacturer,
         model: instrument.model,
         serialNumber: instrument.serialNumber,
+        certificationStatus: instrument.certificationStatus,
         calibrationCertNumber: instrument.calibrationCertNumber,
-        calibrationExpiresAt: instrument.calibrationExpiresAt.toISOString(),
+        calibrationExpiresAt: instrument.calibrationExpiresAt?.toISOString() ?? null,
         active: instrument.active,
       },
     });

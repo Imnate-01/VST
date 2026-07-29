@@ -11,6 +11,12 @@ import { createHash } from "node:crypto";
 
 export type SignedPoint = {
   kind: string;
+  /**
+   * Un punto N/A guarda todos sus valores en null, igual que uno vacío. Sin
+   * este campo, declarar N/A no cambiaría el hash y la firma sobreviviría a un
+   * cambio que sí se imprime en el certificado.
+   */
+  notApplicable: boolean;
   targetNominal: string | null;
   asFoundReference: string | null;
   asFoundReading: string | null;
@@ -18,8 +24,39 @@ export type SignedPoint = {
   asLeftReading: string | null;
 };
 
+/**
+ * Patrón que respalda el certificado, con sus datos de certificación.
+ *
+ * Se firma el snapshot completo, no solo el número de serie: la página imprime
+ * el certificado de calibración y su vigencia, y esos valores se refrescan cada
+ * vez que se guarda el paso de instrumentos.
+ */
+export type SignedStandard = {
+  role: "primary" | "additional";
+  description: string;
+  manufacturer: string;
+  model: string;
+  serial: string;
+  certificationStatus: string;
+  certNumber: string | null;
+  calibrationDate: string | null;
+  validTo: string | null;
+};
+
 export type SignedMeasurement = {
   tagNumber: string;
+  /**
+   * Identidad impresa del dispositivo. Va en el payload porque los snapshots se
+   * refrescan desde el catálogo cada vez que se guarda el checklist: si un
+   * admin edita la descripción o la tolerancia, la columna del certificado
+   * cambia sin que nadie toque una medición.
+   */
+  description: string;
+  toleranceValue: string;
+  toleranceUnit: string;
+  toleranceIsPercent: boolean;
+  /** Posición de la columna en la tabla del certificado. */
+  displayOrder: number;
   status: string;
   requiredAdjustment: boolean;
   correctionMethod: string | null;
@@ -37,7 +74,8 @@ export type CertificateSignaturePayload = {
   reportNumber: string;
   certificateType: string;
   overallStatus: string;
-  standardSerial: string;
+  /** Todos los patrones de la sección, el principal primero. */
+  standards: SignedStandard[];
   /** Observaciones de la sección: se imprimen en la página que se firma. */
   notes: string | null;
   params?: unknown;
@@ -54,12 +92,36 @@ export type CertificateSignaturePayload = {
   }>;
 };
 
+/**
+ * Fila del checklist: se imprime completa en la página de alcance, así que se
+ * firma completa. Todos estos campos son snapshots que el paso de dispositivos
+ * refresca desde el catálogo.
+ */
+export type SignedChecklistRow = {
+  tagNumber: string;
+  description: string;
+  deviceType: string;
+  toleranceValue: string;
+  toleranceUnit: string;
+  toleranceIsPercent: boolean;
+  certificateTypes: string[];
+  displayOrder: number;
+  included: boolean;
+  exclusionReason: string | null;
+};
+
 export type ReportSignaturePayload = {
   scope: "report";
   reportNumber: string;
   serviceDate: string;
   fillerSerial: string;
   observations: string | null;
+  /**
+   * Alcance del servicio. Va en el payload porque el reporte lo imprime: sin
+   * esto, excluir un dispositivo cambiaría la página de alcance sin mover el
+   * hash de la firma general.
+   */
+  checklist: SignedChecklistRow[];
   /** Un par (tipo, hash de la firma del certificado) por certificado firmado. */
   certificates: Array<{ certificateType: string; payloadHash: string }>;
 };
@@ -71,11 +133,31 @@ const POINT_ORDER = ["LOW", "HIGH", "SINGLE"];
 function canonicalPoint(point: SignedPoint): unknown[] {
   return [
     point.kind,
+    point.notApplicable,
     point.targetNominal,
     point.asFoundReference,
     point.asFoundReading,
     point.asLeftReference,
     point.asLeftReading,
+  ];
+}
+
+/**
+ * El orden importa y no se reordena: es el orden en que los bloques de
+ * validación salen impresos, con el principal arriba. El caller lo entrega ya
+ * determinado por `displayOrder`.
+ */
+function canonicalStandard(standard: SignedStandard): unknown[] {
+  return [
+    standard.role,
+    standard.description,
+    standard.manufacturer,
+    standard.model,
+    standard.serial,
+    standard.certificationStatus,
+    standard.certNumber,
+    standard.calibrationDate,
+    standard.validTo,
   ];
 }
 
@@ -86,6 +168,11 @@ function canonicalMeasurement(measurement: SignedMeasurement): unknown[] {
 
   return [
     measurement.tagNumber,
+    measurement.description,
+    measurement.toleranceValue,
+    measurement.toleranceUnit,
+    measurement.toleranceIsPercent,
+    measurement.displayOrder,
     measurement.status,
     measurement.requiredAdjustment,
     measurement.correctionMethod,
@@ -124,7 +211,7 @@ export function canonicalizePayload(payload: SignaturePayload): string {
       payload.reportNumber,
       payload.certificateType,
       payload.overallStatus,
-      payload.standardSerial,
+      payload.standards.map(canonicalStandard),
       payload.notes,
       canonicalJson(payload.params ?? null),
       measurements.map(canonicalMeasurement),
@@ -153,6 +240,20 @@ export function canonicalizePayload(payload: SignaturePayload): string {
     payload.serviceDate,
     payload.fillerSerial,
     payload.observations,
+    [...payload.checklist]
+      .sort((a, b) => a.tagNumber.localeCompare(b.tagNumber))
+      .map((row) => [
+        row.tagNumber,
+        row.description,
+        row.deviceType,
+        row.toleranceValue,
+        row.toleranceUnit,
+        row.toleranceIsPercent,
+        [...row.certificateTypes].sort(),
+        row.displayOrder,
+        row.included,
+        row.exclusionReason,
+      ]),
     certificates.map((certificate) => [
       certificate.certificateType,
       certificate.payloadHash,

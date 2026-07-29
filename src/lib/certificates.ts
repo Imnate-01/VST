@@ -17,8 +17,24 @@ export type CertificateConfig = {
   route: string;
   label: string;
   layout: CertificateLayout;
-  /** Página del PDF original. Define el orden del wizard y del PDF final. */
+  /**
+   * Página en la plantilla oficial. Define el orden de las secciones impresas.
+   *
+   * Sigue el molde base 2026 (VST SF100P_BASE_2026), que respecto del reporte
+   * histórico Rev2 subió Vacuum Pressure junto al tanque de vacío (p.8) y mandó
+   * la verificación de extracción al final (p.15).
+   */
   pdfPage: number;
+  /**
+   * Orden en que los ingenieros recorren la máquina en sitio, según la lista
+   * "VST Calibration Procedures and Testing". Define el orden del wizard.
+   *
+   * No es el mismo que `pdfPage`: el impreso conserva la paginación de la
+   * plantilla para que el reporte siga siendo comparable, y la captura sigue la
+   * ruta física del servicio. Los pasos de mantenimiento preventivo de esa
+   * lista (filtros, mangueras, tubing) no generan certificado y no aparecen acá.
+   */
+  captureOrder: number;
   /** Puntos capturables. Vacío para TEST_READINGS y VERIFICATION. */
   pointKinds: readonly PointKind[];
   /** Sustantivo de la magnitud medida, para los rótulos del formulario. */
@@ -41,6 +57,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     label: "Temperature",
     layout: CertificateLayout.RANGE,
     pdfPage: 3,
+    captureOrder: 2,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "temperature",
     showDeviation: true,
@@ -51,6 +68,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     label: "Chamber VST Supply Air Flow",
     layout: CertificateLayout.SETPOINT,
     pdfPage: 4,
+    captureOrder: 9,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "air flow",
     showDeviation: true,
@@ -62,6 +80,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     label: "Filling Chamber Sterile Air Flow",
     layout: CertificateLayout.SETPOINT,
     pdfPage: 5,
+    captureOrder: 11,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "air flow",
     showDeviation: true,
@@ -73,6 +92,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     label: "Pressure",
     layout: CertificateLayout.RANGE,
     pdfPage: 6,
+    captureOrder: 6,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "pressure",
     showDeviation: true,
@@ -83,6 +103,7 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     label: "Vacuum Tank Pressure",
     layout: CertificateLayout.RANGE,
     pdfPage: 7,
+    captureOrder: 7,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "vacuum pressure",
     showDeviation: true,
@@ -92,7 +113,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     route: "eol-flow",
     label: "End of Line Flow",
     layout: CertificateLayout.RANGE,
-    pdfPage: 8,
+    pdfPage: 9,
+    captureOrder: 12,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "flow",
     showDeviation: true,
@@ -102,7 +124,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     route: "vac-flow",
     label: "Vacuum Circuit Flow",
     layout: CertificateLayout.RANGE,
-    pdfPage: 9,
+    pdfPage: 10,
+    captureOrder: 13,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "flow",
     showDeviation: true,
@@ -112,7 +135,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     route: "humidity",
     label: "Humidity",
     layout: CertificateLayout.SINGLE_POINT,
-    pdfPage: 10,
+    pdfPage: 11,
+    captureOrder: 1,
     pointKinds: [PointKind.SINGLE],
     measuredQuantity: "relative humidity",
     showDeviation: true,
@@ -122,7 +146,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     route: "ultrasonic",
     label: "Reservoir Ultrasonic Sensor",
     layout: CertificateLayout.TEST_READINGS,
-    pdfPage: 11,
+    pdfPage: 12,
+    captureOrder: 3,
     pointKinds: [],
     measuredQuantity: "mass",
     showDeviation: true,
@@ -133,7 +158,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     route: "metering-pump-chamber",
     label: "Metering Pump (Chamber Sterilization)",
     layout: CertificateLayout.TEST_READINGS,
-    pdfPage: 12,
+    pdfPage: 13,
+    captureOrder: 4,
     pointKinds: [],
     measuredQuantity: "mass",
     showDeviation: true,
@@ -144,7 +170,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     route: "metering-pump-tunnel",
     label: "Metering Pump (Tunnel Sterilization)",
     layout: CertificateLayout.TEST_READINGS,
-    pdfPage: 13,
+    pdfPage: 14,
+    captureOrder: 5,
     pointKinds: [],
     measuredQuantity: "mass",
     showDeviation: true,
@@ -155,7 +182,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     route: "exhaust",
     label: "Exhaust Verification",
     layout: CertificateLayout.VERIFICATION,
-    pdfPage: 14,
+    pdfPage: 15,
+    captureOrder: 10,
     pointKinds: [],
     measuredQuantity: "air flow",
     showDeviation: false,
@@ -166,7 +194,8 @@ export const CERTIFICATE_CONFIG: Record<CertificateType, CertificateConfig> = {
     route: "vacuum-pressure",
     label: "Vacuum Pressure",
     layout: CertificateLayout.RANGE,
-    pdfPage: 15,
+    pdfPage: 8,
+    captureOrder: 8,
     pointKinds: [PointKind.LOW, PointKind.HIGH],
     measuredQuantity: "vacuum pressure",
     showDeviation: true,
@@ -181,8 +210,13 @@ export const certificateTypesInPdfOrder = [...allCertificateTypes].sort(
   (a, b) => CERTIFICATE_CONFIG[a].pdfPage - CERTIFICATE_CONFIG[b].pdfPage
 );
 
+/** Todos los tipos, en el orden en que se recorren en sitio. */
+export const certificateTypesInCaptureOrder = [...allCertificateTypes].sort(
+  (a, b) => CERTIFICATE_CONFIG[a].captureOrder - CERTIFICATE_CONFIG[b].captureOrder
+);
+
 /** Tipos cuya captura ya existe en la app, en orden de wizard. */
-export const implementedCertificateTypes = certificateTypesInPdfOrder.filter(
+export const implementedCertificateTypes = certificateTypesInCaptureOrder.filter(
   (type) => CERTIFICATE_CONFIG[type].implemented
 );
 
@@ -300,6 +334,16 @@ export function getDefaultTargets(params: {
             : "",
         [PointKind.HIGH]: "121.5",
       };
+    case CertificateType.PRESSURE:
+      // El molde base 2026 trae un par distinto por sensor: los dos de tanque
+      // se calibran a 3/15 PSI, la cámara a 10/25 y el suministro de N2 a 10/20.
+      if (description.includes("supply")) {
+        return { [PointKind.LOW]: "10.0", [PointKind.HIGH]: "20.0" };
+      }
+      if (description.includes("chamber")) {
+        return { [PointKind.LOW]: "10.0", [PointKind.HIGH]: "25.0" };
+      }
+      return { [PointKind.LOW]: "3.0", [PointKind.HIGH]: "15.0" };
     case CertificateType.VACUUM_PRESSURE:
       return { [PointKind.LOW]: "-5.0", [PointKind.HIGH]: "-25.0" };
     case CertificateType.VACUUM_TANK_PRESSURE:

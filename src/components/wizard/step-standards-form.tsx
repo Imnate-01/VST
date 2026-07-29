@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Plus, X } from "lucide-react";
 import { updateReportStandards } from "@/server/actions/reports";
+import { Button } from "@/components/ui/button";
 import {
   getReportStandardsSchema,
   type ReportStandardsInput,
@@ -12,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { formatDate } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 import { getCertificateLabel } from "@/lib/certificates";
-import type { CertificateType } from "@prisma/client";
+import type { CertificateType, StandardCertificationStatus } from "@prisma/client";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
 import { useUnsavedChanges } from "@/components/navigation-protection-provider";
 
@@ -22,10 +24,12 @@ type StandardOption = {
   manufacturer: string;
   model: string;
   serialNumber: string;
-  calibrationCertNumber: string;
-  calibrationDate: string;
-  calibrationExpiresAt: string;
+  certificationStatus: StandardCertificationStatus;
+  calibrationCertNumber: string | null;
+  calibrationDate: string | null;
+  calibrationExpiresAt: string | null;
   expiredForServiceDate: boolean;
+  unavailableForReport: boolean;
 };
 
 type Props = {
@@ -35,6 +39,109 @@ type Props = {
   standards: StandardOption[];
   initialValues: ReportStandardsInput;
 };
+
+function standardLabel(standard: StandardOption) {
+  return `${standard.description} · ${standard.manufacturer} ${standard.model} · SN ${standard.serialNumber}`;
+}
+
+/**
+ * Instrumentos que acompañan al principal en una sección. Se manejan como
+ * lista de ids en vez de casillas: con el catálogo completo, trece secciones de
+ * casillas serían inmanejables.
+ */
+function AdditionalStandards({
+  standards,
+  selectedIds,
+  primaryId,
+  onChange,
+}: {
+  standards: StandardOption[];
+  selectedIds: string[];
+  primaryId: string;
+  onChange: (ids: string[]) => void;
+}) {
+  const { t } = useLanguage();
+  const [pending, setPending] = useState("");
+  const available = standards.filter(
+    (standard) =>
+      standard.id !== primaryId &&
+      !selectedIds.includes(standard.id) &&
+      !standard.expiredForServiceDate &&
+      !standard.unavailableForReport
+  );
+  const selected = selectedIds
+    .map((id) => standards.find((standard) => standard.id === id))
+    .filter((standard): standard is StandardOption => Boolean(standard));
+
+  return (
+    <div className="mt-4 border-t pt-3">
+      <div className="text-xs font-semibold text-foreground">
+        {t("standards.additional")}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {t("standards.additionalHint")}
+      </p>
+
+      {selected.length === 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t("standards.noAdditional")}</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {selected.map((standard) => (
+            <li
+              key={standard.id}
+              className="flex items-center justify-between gap-3 rounded-lg border bg-muted/50 px-3 py-1.5"
+            >
+              <span className="technical-id text-xs">{standardLabel(standard)}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                aria-label={t("standards.removeAdditional", { name: standard.description })}
+                onClick={() =>
+                  onChange(selectedIds.filter((id) => id !== standard.id))
+                }
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {available.length > 0 && (
+        <div className="mt-2 flex gap-2">
+          <select
+            aria-label={t("standards.additional")}
+            className="technical-id flex h-9 w-full rounded-lg border border-input bg-white px-3 text-xs"
+            value={pending}
+            onChange={(event) => setPending(event.target.value)}
+          >
+            <option value="">{t("standards.select")}</option>
+            {available.map((standard) => (
+              <option key={standard.id} value={standard.id}>
+                {standardLabel(standard)}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={!pending}
+            onClick={() => {
+              if (!pending) return;
+              onChange([...selectedIds, pending]);
+              setPending("");
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("standards.addAdditional")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function StepStandardsForm({
   reportId,
@@ -55,6 +162,7 @@ export function StepStandardsForm({
     control: form.control,
     name: "standards",
   });
+  const watchedStandards = useWatch({ control: form.control, name: "standards" });
 
   function onSubmit(values: ReportStandardsInput) {
     setServerError(null);
@@ -103,7 +211,14 @@ export function StepStandardsForm({
                     <div className="mb-2 text-sm font-semibold">
                       {getCertificateLabel(type as CertificateType, locale)}
                     </div>
+                    <label
+                      className="mb-1 block text-xs text-muted-foreground"
+                      htmlFor={`standard-primary-${index}`}
+                    >
+                      {t("standards.primary")}
+                    </label>
                     <select
+                      id={`standard-primary-${index}`}
                       className="technical-id flex h-10 w-full rounded-lg border border-input bg-white px-3 py-1 text-sm"
                       {...form.register(`standards.${index}.standardInstrumentId`)}
                     >
@@ -112,16 +227,39 @@ export function StepStandardsForm({
                         <option
                           key={standard.id}
                           value={standard.id}
-                          disabled={standard.expiredForServiceDate}
+                          disabled={
+                            standard.expiredForServiceDate ||
+                            standard.unavailableForReport
+                          }
                         >
                           {standard.description} · {standard.manufacturer} {standard.model} · SN{" "}
-                          {standard.serialNumber} · {t("common.certificateAbbr")} {standard.calibrationCertNumber} · {t("common.expires")} {" "}
-                          {formatDate(standard.calibrationExpiresAt, locale)}
+                          {standard.serialNumber}
+                          {standard.certificationStatus === "CERTIFIED" &&
+                          standard.calibrationExpiresAt
+                            ? ` · ${t("common.certificateAbbr")} ${standard.calibrationCertNumber} · ${t("common.expires")} ${formatDate(standard.calibrationExpiresAt, locale)}`
+                            : standard.certificationStatus === "NOT_APPLICABLE"
+                              ? ` · ${t("standardsAdmin.notApplicable")}`
+                              : ` · ${t("standardsAdmin.pendingCertification")}`}
                           {standard.expiredForServiceDate ? ` · ${t("common.expired")}` : ""}
                         </option>
                       ))}
                     </select>
                     {error && <p className="mt-1 text-xs text-destructive">{error.message}</p>}
+
+                    <AdditionalStandards
+                      standards={standards}
+                      primaryId={watchedStandards?.[index]?.standardInstrumentId ?? ""}
+                      selectedIds={
+                        watchedStandards?.[index]?.additionalStandardInstrumentIds ?? []
+                      }
+                      onChange={(ids) =>
+                        form.setValue(
+                          `standards.${index}.additionalStandardInstrumentIds`,
+                          ids,
+                          { shouldDirty: true }
+                        )
+                      }
+                    />
                   </div>
                 );
               })}

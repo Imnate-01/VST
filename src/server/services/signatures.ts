@@ -12,6 +12,7 @@ import {
   hashSignaturePayload,
   type CertificateSignaturePayload,
   type ReportSignaturePayload,
+  type SignedStandard,
 } from "@/server/domain/signature-payload";
 import {
   hasCompleteCertificateMeasurement,
@@ -53,6 +54,37 @@ function decimalToString(value: { toString(): string } | null | undefined) {
   return value ? value.toString() : null;
 }
 
+function dateOnly(value: Date | null): string | null {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+/** Snapshot del patrón tal como se imprime en su bloque de validación. */
+function signedStandard(
+  role: "primary" | "additional",
+  standard: {
+    descriptionSnapshot: string;
+    manufacturerSnapshot: string;
+    modelSnapshot: string;
+    serialSnapshot: string;
+    certificationStatusSnapshot: string;
+    certNumberSnapshot: string | null;
+    calDateSnapshot: Date | null;
+    calExpiresAtSnapshot: Date | null;
+  }
+): SignedStandard {
+  return {
+    role,
+    description: standard.descriptionSnapshot,
+    manufacturer: standard.manufacturerSnapshot,
+    model: standard.modelSnapshot,
+    serial: standard.serialSnapshot,
+    certificationStatus: standard.certificationStatusSnapshot,
+    certNumber: standard.certNumberSnapshot,
+    calibrationDate: dateOnly(standard.calDateSnapshot),
+    validTo: dateOnly(standard.calExpiresAtSnapshot),
+  };
+}
+
 async function getEditableReport(reportId: string, actor: Actor) {
   const report = await prisma.report.findUnique({
     where: { id: reportId },
@@ -77,10 +109,14 @@ async function buildCertificatePayload(
     where: { id: certificateId },
     include: {
       report: { select: { reportNumber: true } },
-      primaryStandard: { select: { serialSnapshot: true } },
+      primaryStandard: true,
+      additionalStandards: {
+        include: { reportStandard: true },
+        orderBy: { displayOrder: "asc" },
+      },
       measurements: {
         include: {
-          deviceSelection: { select: { tagNumberSnapshot: true } },
+          deviceSelection: true,
           points: true,
           readings: true,
         },
@@ -98,17 +134,28 @@ async function buildCertificatePayload(
     reportNumber: certificate.report.reportNumber,
     certificateType: certificate.certificateType,
     overallStatus: certificate.overallStatus,
-    standardSerial: certificate.primaryStandard.serialSnapshot,
+    standards: [
+      signedStandard("primary", certificate.primaryStandard),
+      ...certificate.additionalStandards.map((link) =>
+        signedStandard("additional", link.reportStandard)
+      ),
+    ],
     notes: certificate.notes,
     params: certificate.params,
     measurements: certificate.measurements.map((measurement) => ({
       tagNumber: measurement.deviceSelection.tagNumberSnapshot,
+      description: measurement.deviceSelection.descriptionSnapshot,
+      toleranceValue: measurement.deviceSelection.toleranceValueSnapshot.toString(),
+      toleranceUnit: measurement.deviceSelection.toleranceUnitSnapshot,
+      toleranceIsPercent: measurement.deviceSelection.toleranceIsPercentSnapshot,
+      displayOrder: measurement.deviceSelection.displayOrderSnapshot,
       status: measurement.status,
       requiredAdjustment: measurement.requiredAdjustment,
       correctionMethod: measurement.correctionMethod,
       notes: measurement.notes,
       points: measurement.points.map((point) => ({
         kind: point.kind,
+        notApplicable: point.notApplicable,
         targetNominal: decimalToString(point.targetNominal),
         asFoundReference: decimalToString(point.asFoundReference),
         asFoundReading: decimalToString(point.asFoundReading),
@@ -134,19 +181,140 @@ async function buildCertificatePayload(
   };
 }
 
+/** Revoca la firma general del reporte. */
+export async function revokeReportSignatures(
+  tx: Prisma.TransactionClient,
+  reportId: string
+): Promise<number> {
+  const result = await tx.signature.updateMany({
+    where: { reportId, certificateId: null, revoked: false },
+    data: { revoked: true, revokedAt: new Date() },
+  });
+
+  return result.count;
+}
+
 /**
- * Revoca la firma activa de un certificado. Se llama cada vez que cambian sus
- * mediciones: una firma vale sobre el contenido que se firmó, no sobre el
- * certificado como identidad.
+ * Payload firmado del reporte: identidad, alcance y las firmas vigentes de sus
+ * certificados. Se arma igual al firmar y al verificar, para que el hash sea
+ * comparable.
+ */
+async function buildReportPayload(reportId: string): Promise<ReportSignaturePayload> {
+  const report = await prisma.report.findUnique({
+    where: { id: reportId },
+    include: {
+      filler: { select: { serialNumber: true } },
+      deviceSelections: true,
+      certificates: {
+        include: { signatures: { where: { revoked: false }, orderBy: { signedAt: "desc" } } },
+      },
+    },
+  });
+
+  if (!report) {
+    throw new Error("Reporte no encontrado.");
+  }
+
+  return {
+    scope: "report",
+    reportNumber: report.reportNumber,
+    serviceDate: report.serviceDate.toISOString().slice(0, 10),
+    fillerSerial: report.filler.serialNumber,
+    observations: report.observations,
+    checklist: report.deviceSelections.map((selection) => ({
+      tagNumber: selection.tagNumberSnapshot,
+      description: selection.descriptionSnapshot,
+      deviceType: selection.deviceTypeSnapshot,
+      toleranceValue: selection.toleranceValueSnapshot.toString(),
+      toleranceUnit: selection.toleranceUnitSnapshot,
+      toleranceIsPercent: selection.toleranceIsPercentSnapshot,
+      certificateTypes: selection.certificateTypesSnapshot,
+      displayOrder: selection.displayOrderSnapshot,
+      included: selection.included,
+      exclusionReason: selection.exclusionReason,
+    })),
+    certificates: report.certificates
+      .filter((certificate) => certificate.signatures.length > 0)
+      .map((certificate) => ({
+        certificateType: certificate.certificateType,
+        payloadHash: certificate.signatures[0]!.payloadHash,
+      })),
+  };
+}
+
+export type StaleSignatures = {
+  /** Certificados cuya firma ya no corresponde a su contenido actual. */
+  certificateTypes: string[];
+  /** La firma general dejó de corresponder al reporte. */
+  report: boolean;
+};
+
+/**
+ * Recalcula los hashes de las firmas vigentes y los compara con los guardados.
+ *
+ * Es la red de seguridad del modelo de firmas: la revocación al editar depende
+ * de que cada camino de escritura se acuerde de revocar, y esto detecta el que
+ * se haya olvidado antes de que el reporte se emita.
+ */
+export async function findStaleSignatures(
+  reportId: string
+): Promise<StaleSignatures> {
+  const certificates = await prisma.certificate.findMany({
+    where: { reportId, signatures: { some: { revoked: false } } },
+    include: {
+      signatures: { where: { revoked: false }, orderBy: { signedAt: "desc" }, take: 1 },
+    },
+  });
+
+  const certificateTypes: string[] = [];
+  for (const certificate of certificates) {
+    const expected = hashSignaturePayload(await buildCertificatePayload(certificate.id));
+    if (expected !== certificate.signatures[0]!.payloadHash) {
+      certificateTypes.push(certificate.certificateType);
+    }
+  }
+
+  const reportSignature = await prisma.signature.findFirst({
+    where: { reportId, certificateId: null, revoked: false },
+    orderBy: { signedAt: "desc" },
+  });
+
+  const reportStale = reportSignature
+    ? hashSignaturePayload(await buildReportPayload(reportId)) !==
+      reportSignature.payloadHash
+    : false;
+
+  return { certificateTypes, report: reportStale };
+}
+
+/**
+ * Revoca la firma activa de un certificado y, en cascada, la del reporte.
+ *
+ * Se llama cada vez que cambia el contenido firmado de la sección: mediciones,
+ * filas de verificación o patrones. Una firma vale sobre el contenido que se
+ * firmó, no sobre el certificado como identidad.
+ *
+ * La firma del reporte cae con ella porque se calcula sobre los hashes de las
+ * firmas de sus certificados: si una deja de valer, el reporte estaría
+ * acreditando un conjunto que ya no existe.
  */
 export async function revokeCertificateSignatures(
   tx: Prisma.TransactionClient,
   certificateId: string
 ): Promise<number> {
+  const certificate = await tx.certificate.findUnique({
+    where: { id: certificateId },
+    select: { reportId: true },
+  });
+
   const result = await tx.signature.updateMany({
     where: { certificateId, revoked: false },
     data: { revoked: true, revokedAt: new Date() },
   });
+
+  if (certificate) {
+    await revokeReportSignatures(tx, certificate.reportId);
+  }
 
   return result.count;
 }
@@ -279,17 +447,7 @@ export async function signReport(
     );
   }
 
-  const payload: ReportSignaturePayload = {
-    scope: "report",
-    reportNumber: report.reportNumber,
-    serviceDate: report.serviceDate.toISOString().slice(0, 10),
-    fillerSerial: report.filler.serialNumber,
-    observations: report.observations,
-    certificates: certificates.map((certificate) => ({
-      certificateType: certificate.certificateType,
-      payloadHash: certificate.signatures[0]!.payloadHash,
-    })),
-  };
+  const payload = await buildReportPayload(report.id);
   const payloadHash = hashSignaturePayload(payload);
   const context = await getRequestContext();
 

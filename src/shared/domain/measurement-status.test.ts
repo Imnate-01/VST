@@ -53,6 +53,70 @@ describe("calculateMeasurementStatus (isomórfico)", () => {
     });
     expect(result.status).toBe("PENDING");
   });
+
+  it("firma el dispositivo que solo se calibra en el punto alto", () => {
+    // Los RTD de túnel y cámara no tienen punto bajo: declararlo N/A completa
+    // la captura en vez de dejar el certificado pendiente para siempre.
+    const result = calculateMeasurementStatus({
+      ...base,
+      input: {
+        deviceSelectionId: "d1",
+        points: [
+          { kind: "LOW", notApplicable: true, targetNominal: "40" },
+          {
+            kind: "HIGH",
+            targetNominal: "121.5",
+            asFoundReading: "121.4",
+            asLeftReading: "121.5",
+          },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("PASS");
+    expect(result.points[0]?.notApplicable).toBe(true);
+    // El objetivo sugerido no se guarda: nadie midió ese punto.
+    expect(result.points[0]?.targetNominal).toBeNull();
+    expect(result.points[0]?.asLeftInTolerance).toBeNull();
+  });
+
+  it("deja el dispositivo en NA cuando ningún punto aplica", () => {
+    const result = calculateMeasurementStatus({
+      ...base,
+      input: {
+        deviceSelectionId: "d1",
+        points: [
+          { kind: "LOW", notApplicable: true },
+          { kind: "HIGH", notApplicable: true },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("NA");
+    // NA no es reprobar ni estar pendiente: no cuenta como canal evaluado.
+    expect(aggregateCertificateStatus(["NA", "PASS"])).toBe("PASS");
+  });
+
+  it("un punto N/A no arrastra al resto a fallar", () => {
+    const result = calculateMeasurementStatus({
+      ...base,
+      input: {
+        deviceSelectionId: "d1",
+        points: [
+          { kind: "LOW", notApplicable: true, asFoundReading: "999" },
+          {
+            kind: "HIGH",
+            targetNominal: "121.5",
+            asFoundReading: "123",
+            asLeftReading: "121.5",
+          },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("PASS");
+    expect(result.requiredAdjustment).toBe(true);
+  });
 });
 
 describe("calculateTestReadings", () => {

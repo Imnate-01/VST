@@ -87,13 +87,40 @@ export type ChecklistDeviceInput = z.infer<typeof checklistDeviceSchema>;
 
 export function getReportStandardsSchema(locale: Locale) {
   return z.object({
-  reportId: z.string().min(1),
-  standards: z.array(
-    z.object({
-      certificateType: z.nativeEnum(CertificateType),
-      standardInstrumentId: z.string().min(1, translate(locale, "validation.selectStandard")),
-    })
-  ),
+    reportId: z.string().min(1),
+    standards: z.array(
+      z.object({
+        certificateType: z.nativeEnum(CertificateType),
+        standardInstrumentId: z
+          .string()
+          .min(1, translate(locale, "validation.selectStandard")),
+        /**
+         * Instrumentos complementarios de la sección. El ultrasónico y las
+         * bombas se miden con báscula y peso patrón: el segundo verifica al
+         * primero y la plantilla exige nombrar a los dos.
+         */
+        additionalStandardInstrumentIds: z.array(z.string().min(1)).optional(),
+      })
+    ),
+  })
+  .superRefine((value, ctx) => {
+    value.standards.forEach((standard, index) => {
+      const extras = standard.additionalStandardInstrumentIds ?? [];
+      if (extras.includes(standard.standardInstrumentId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: translate(locale, "validation.duplicateStandard"),
+          path: ["standards", index, "additionalStandardInstrumentIds"],
+        });
+      }
+      if (new Set(extras).size !== extras.length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: translate(locale, "validation.duplicateStandard"),
+          path: ["standards", index, "additionalStandardInstrumentIds"],
+        });
+      }
+    });
   });
 }
 

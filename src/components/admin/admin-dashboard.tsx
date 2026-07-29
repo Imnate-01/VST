@@ -43,6 +43,7 @@ export async function AdminDashboard({
     activeEngineers,
     failedMeasurements,
     expiredStandards,
+    pendingStandards,
     oldDrafts,
     clients,
   ] = await Promise.all([
@@ -73,7 +74,14 @@ export async function AdminDashboard({
       },
     }),
     prisma.standardInstrument.count({
-      where: { active: true, calibrationExpiresAt: { lt: now } },
+      where: {
+        active: true,
+        certificationStatus: "CERTIFIED",
+        calibrationExpiresAt: { lt: now },
+      },
+    }),
+    prisma.standardInstrument.count({
+      where: { active: true, certificationStatus: "PENDING" },
     }),
     prisma.report.count({
       where: { status: "DRAFT", createdAt: { lt: sevenDaysAgo }, ...clientScope },
@@ -131,7 +139,8 @@ export async function AdminDashboard({
     .slice(0, 5);
   const maxFailures = Math.max(1, ...failureTypes.map((item) => item.count));
   const latestReports = reports.slice(0, 5);
-  const alertCount = expiredStandards + oldDrafts + failedReportIds.size;
+  const alertCount =
+    expiredStandards + pendingStandards + oldDrafts + failedReportIds.size;
 
   return (
     <div className="space-y-8">
@@ -342,6 +351,15 @@ export async function AdminDashboard({
                   tone="error"
                   title={t("admin.expiredStandards", { count: expiredStandards })}
                   description={t("admin.blockSigning")}
+                  href="/admin/standards"
+                  action={t("admin.openStandards")}
+                />
+              )}
+              {pendingStandards > 0 && (
+                <AlertCard
+                  tone="warning"
+                  title={t("admin.pendingStandards", { count: pendingStandards })}
+                  description={t("admin.completeCertification")}
                   href="/admin/standards"
                   action={t("admin.openStandards")}
                 />

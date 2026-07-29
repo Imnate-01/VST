@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
+import type { StandardCertificationStatus } from "@prisma/client";
 import {
   deleteStandardInstrument,
   saveStandardInstrument,
@@ -32,18 +33,29 @@ export type StandardInstrumentItem = {
   manufacturer: string;
   model: string;
   serialNumber: string;
-  calibrationCertNumber: string;
-  calibrationDate: string;
-  calibrationExpiresAt: string;
+  certificationStatus: StandardCertificationStatus;
+  calibrationCertNumber: string | null;
+  calibrationDate: string | null;
+  calibrationExpiresAt: string | null;
   active: boolean;
   linkedReports: number;
 };
 
-type Validity = "ALL" | "VALID" | "SOON" | "EXPIRED" | "INACTIVE";
+type Validity =
+  | "ALL"
+  | "VALID"
+  | "SOON"
+  | "EXPIRED"
+  | "NOT_APPLICABLE"
+  | "PENDING"
+  | "INACTIVE";
 const PAGE_SIZE = 5;
 
 function validityOf(instrument: StandardInstrumentItem): Exclude<Validity, "ALL"> {
   if (!instrument.active) return "INACTIVE";
+  if (instrument.certificationStatus === "NOT_APPLICABLE") return "NOT_APPLICABLE";
+  if (instrument.certificationStatus === "PENDING") return "PENDING";
+  if (!instrument.calibrationExpiresAt) return "PENDING";
   const expiry = new Date(`${instrument.calibrationExpiresAt}T23:59:59.999Z`).getTime();
   const days = Math.ceil((expiry - Date.now()) / (24 * 60 * 60 * 1000));
   if (days < 0) return "EXPIRED";
@@ -77,7 +89,7 @@ export function StandardInstrumentsManager({
         !needle ||
         instrument.description.toLowerCase().includes(needle) ||
         instrument.serialNumber.toLowerCase().includes(needle) ||
-        instrument.calibrationCertNumber.toLowerCase().includes(needle) ||
+        instrument.calibrationCertNumber?.toLowerCase().includes(needle) ||
         instrument.model.toLowerCase().includes(needle);
       return (
         matchesSearch &&
@@ -157,6 +169,8 @@ export function StandardInstrumentsManager({
           <option value="VALID">{t("dashboard.valid")}</option>
           <option value="SOON">{t("dashboard.expiringSoon")}</option>
           <option value="EXPIRED">{t("dashboard.expired")}</option>
+          <option value="NOT_APPLICABLE">{t("standardsAdmin.notApplicable")}</option>
+          <option value="PENDING">{t("standardsAdmin.pendingCertification")}</option>
           <option value="INACTIVE">{t("standardsAdmin.inactive")}</option>
         </select>
       </section>
@@ -189,8 +203,17 @@ export function StandardInstrumentsManager({
                   <td>{instrument.manufacturer}</td>
                   <td className="technical-id text-muted-foreground">{instrument.model}</td>
                   <td className="technical-id text-muted-foreground">{instrument.serialNumber}</td>
-                  <td className="technical-id text-muted-foreground">{instrument.calibrationCertNumber}</td>
-                  <td className="technical-id text-muted-foreground">{instrument.calibrationDate}</td>
+                  <td className="technical-id text-muted-foreground">
+                    {instrument.certificationStatus === "PENDING"
+                      ? t("standardsAdmin.pendingCertification")
+                      : instrument.calibrationCertNumber ??
+                        t("standardsAdmin.notApplicable")}
+                  </td>
+                  <td className="technical-id text-muted-foreground">
+                    {instrument.certificationStatus === "PENDING"
+                      ? t("standardsAdmin.pendingCertification")
+                      : instrument.calibrationDate ?? t("standardsAdmin.notApplicable")}
+                  </td>
                   <td><ValidityBadge instrument={instrument} /></td>
                   <td>
                     <div className="flex justify-end gap-2">
@@ -293,20 +316,30 @@ export function StandardInstrumentsManager({
 function ValidityBadge({ instrument }: { instrument: StandardInstrumentItem }) {
   const { t } = useLanguage();
   const state = validityOf(instrument);
-  const Icon = state === "VALID" ? Check : state === "SOON" ? Clock3 : TriangleAlert;
+  const Icon =
+    state === "VALID" || state === "NOT_APPLICABLE"
+      ? Check
+      : state === "SOON"
+        ? Clock3
+        : TriangleAlert;
   return (
     <span
       className={cn(
         "status-badge",
-        state === "VALID" && "border-success/25 bg-success-muted text-success",
+        (state === "VALID" || state === "NOT_APPLICABLE") &&
+          "border-success/25 bg-success-muted text-success",
         state === "SOON" && "border-warning/25 bg-warning-muted text-warning",
-        (state === "EXPIRED" || state === "INACTIVE") &&
+        (state === "EXPIRED" || state === "INACTIVE" || state === "PENDING") &&
           "border-destructive/25 bg-destructive/5 text-destructive"
       )}
     >
       <Icon className="h-3.5 w-3.5" />
       {state === "VALID"
         ? t("dashboard.valid")
+        : state === "NOT_APPLICABLE"
+          ? t("standardsAdmin.notApplicable")
+          : state === "PENDING"
+            ? t("standardsAdmin.pendingCertification")
         : state === "SOON"
           ? t("dashboard.expiringSoon")
           : state === "EXPIRED"
@@ -336,6 +369,7 @@ function InstrumentFormDialog({
     manufacturer: instrument?.manufacturer ?? "",
     model: instrument?.model ?? "",
     serialNumber: instrument?.serialNumber ?? "",
+    certificationStatus: instrument?.certificationStatus ?? "CERTIFIED",
     calibrationCertNumber: instrument?.calibrationCertNumber ?? "",
     calibrationDate: instrument?.calibrationDate ?? "",
     calibrationExpiresAt: instrument?.calibrationExpiresAt ?? "",
@@ -398,15 +432,48 @@ function InstrumentFormDialog({
             <FormField label={t("admin.serial")}>
               <Input value={values.serialNumber} onChange={(e) => field("serialNumber", e.target.value)} required />
             </FormField>
-            <FormField label={t("admin.certificate")}>
-              <Input value={values.calibrationCertNumber} onChange={(e) => field("calibrationCertNumber", e.target.value)} required />
+            <FormField
+              label={t("standardsAdmin.certificationStatus")}
+              className="sm:col-span-2"
+            >
+              <select
+                value={values.certificationStatus}
+                onChange={(event) =>
+                  field(
+                    "certificationStatus",
+                    event.target.value as StandardCertificationStatus
+                  )
+                }
+                className="flex h-10 w-full rounded-lg border border-input bg-white px-3 py-2 text-sm"
+              >
+                <option value="CERTIFIED">{t("standardsAdmin.certified")}</option>
+                <option value="NOT_APPLICABLE">
+                  {t("standardsAdmin.notApplicable")}
+                </option>
+                <option value="PENDING">
+                  {t("standardsAdmin.pendingCertification")}
+                </option>
+              </select>
             </FormField>
-            <FormField label={t("standardsAdmin.calibrationDate")}>
-              <Input type="date" value={values.calibrationDate} onChange={(e) => field("calibrationDate", e.target.value)} required />
-            </FormField>
-            <FormField label={t("admin.validTo")}>
-              <Input type="date" value={values.calibrationExpiresAt} onChange={(e) => field("calibrationExpiresAt", e.target.value)} required />
-            </FormField>
+            {values.certificationStatus === "CERTIFIED" ? (
+              <>
+                <FormField label={t("admin.certificate")}>
+                  <Input value={values.calibrationCertNumber} onChange={(e) => field("calibrationCertNumber", e.target.value)} required />
+                </FormField>
+                <FormField label={t("standardsAdmin.calibrationDate")}>
+                  <Input type="date" value={values.calibrationDate} onChange={(e) => field("calibrationDate", e.target.value)} required />
+                </FormField>
+                <FormField label={t("admin.validTo")}>
+                  <Input type="date" value={values.calibrationExpiresAt} onChange={(e) => field("calibrationExpiresAt", e.target.value)} required />
+                </FormField>
+              </>
+            ) : (
+              <p className="rounded-lg border bg-muted/60 px-3 py-2 text-sm text-muted-foreground sm:col-span-2">
+                {values.certificationStatus === "NOT_APPLICABLE"
+                  ? t("standardsAdmin.notApplicableHelp")
+                  : t("standardsAdmin.pendingCertificationHelp")}
+              </p>
+            )}
             {instrument && (
               <label className="flex items-center gap-3 sm:col-span-2">
                 <input

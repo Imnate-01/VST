@@ -35,6 +35,7 @@ function makeBundle(): OfflineReportBundle {
         params: null,
         overallStatus: "PENDING",
         primaryStandard: { descriptionSnapshot: "Gauge", serialSnapshot: "G1" },
+        additionalStandards: [],
         deviceSelections: [
           {
             id: "sel1",

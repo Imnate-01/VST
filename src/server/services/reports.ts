@@ -9,6 +9,10 @@ import { prisma } from "@/server/db";
 import { generateReportNumber } from "@/server/domain/report-number";
 import { logAudit } from "@/server/services/audit";
 import {
+  revokeCertificateSignatures,
+  revokeReportSignatures,
+} from "@/server/services/signatures";
+import {
   getCertificateConfig,
   getCertificateLayout,
   implementedCertificateTypes,
@@ -40,6 +44,60 @@ function requiredCertificateTypes(
   return implementedTypes.filter(
     (type) => types.has(type) || getCertificateConfig(type).alwaysRequired
   );
+}
+
+/**
+ * Los patrones de un certificado, serializados tal como se imprimen en sus
+ * bloques de validación. Comparar dos huellas dice si la firma sigue
+ * acreditando lo que la página muestra.
+ */
+type StandardSnapshot = {
+  descriptionSnapshot: string;
+  manufacturerSnapshot: string;
+  modelSnapshot: string;
+  serialSnapshot: string;
+  certificationStatusSnapshot: string;
+  certNumberSnapshot: string | null;
+  calDateSnapshot: Date | null;
+  calExpiresAtSnapshot: Date | null;
+};
+
+function standardsFingerprint(standards: StandardSnapshot[]): string {
+  return JSON.stringify(
+    standards.map((standard) => [
+      standard.descriptionSnapshot,
+      standard.manufacturerSnapshot,
+      standard.modelSnapshot,
+      standard.serialSnapshot,
+      standard.certificationStatusSnapshot,
+      standard.certNumberSnapshot,
+      standard.calDateSnapshot?.toISOString() ?? null,
+      standard.calExpiresAtSnapshot?.toISOString() ?? null,
+    ])
+  );
+}
+
+/** El snapshot que quedará guardado al registrar este instrumento. */
+function instrumentSnapshot(instrument: {
+  description: string;
+  manufacturer: string;
+  model: string;
+  serialNumber: string;
+  certificationStatus: string;
+  calibrationCertNumber: string | null;
+  calibrationDate: Date | null;
+  calibrationExpiresAt: Date | null;
+}): StandardSnapshot {
+  return {
+    descriptionSnapshot: instrument.description,
+    manufacturerSnapshot: instrument.manufacturer,
+    modelSnapshot: instrument.model,
+    serialSnapshot: instrument.serialNumber,
+    certificationStatusSnapshot: instrument.certificationStatus,
+    certNumberSnapshot: instrument.calibrationCertNumber,
+    calDateSnapshot: instrument.calibrationDate,
+    calExpiresAtSnapshot: instrument.calibrationExpiresAt,
+  };
 }
 
 function dateOnlyUtc(date: Date): Date {
@@ -187,12 +245,37 @@ export async function updateReportBasicInfo(
   });
   const reportNumber = await getAvailableReportNumber(baseReportNumber, report.id);
   const fillerChanged = report.fillerId !== filler.id;
+  const observations = input.observations?.trim() || null;
+
+  // Todo esto se imprime y entra al payload firmado. El número de reporte
+  // además encabeza cada certificado, así que un cambio ahí tumba también las
+  // firmas de las secciones.
+  const reportNumberChanged = report.reportNumber !== reportNumber;
+  const identityChanged =
+    reportNumberChanged ||
+    fillerChanged ||
+    report.serviceDate.getTime() !== serviceDate.getTime() ||
+    report.observations !== observations;
 
   const updated = await prisma.$transaction(async (tx) => {
     if (fillerChanged) {
       await tx.certificate.deleteMany({ where: { reportId: report.id } });
       await tx.reportStandard.deleteMany({ where: { reportId: report.id } });
       await tx.reportDeviceSelection.deleteMany({ where: { reportId: report.id } });
+    }
+
+    if (reportNumberChanged && !fillerChanged) {
+      const certificates = await tx.certificate.findMany({
+        where: { reportId: report.id },
+        select: { id: true },
+      });
+      for (const certificate of certificates) {
+        await revokeCertificateSignatures(tx, certificate.id);
+      }
+    }
+
+    if (identityChanged) {
+      await revokeReportSignatures(tx, report.id);
     }
 
     return tx.report.update({
@@ -214,8 +297,9 @@ export async function updateReportBasicInfo(
     changes: {
       serviceDate: input.serviceDate,
       fillerId: filler.id,
-      observations: input.observations?.trim() || null,
+      observations,
       resetSelections: fillerChanged,
+      revokedSignatures: identityChanged,
     },
   });
 
@@ -367,6 +451,48 @@ export async function syncReportDeviceSelections(
     }
   }
 
+  // El alcance se imprime en la página de alcance y define qué columnas lleva
+  // cada certificado. Cambiarlo invalida las firmas de las secciones tocadas.
+  const previousSelections = await prisma.reportDeviceSelection.findMany({
+    where: { reportId: report.id },
+  });
+  const previousByDeviceId = new Map(
+    previousSelections.map((selection) => [selection.deviceCatalogId, selection])
+  );
+  const changedTypes = new Set<CertificateType>();
+  let scopeChanged = false;
+
+  for (const device of devices) {
+    const selection = inputsByDeviceId.get(device.id);
+    const previous = previousByDeviceId.get(device.id);
+    if (!selection) continue;
+
+    const reason = selection.included ? null : selection.exclusionReason?.trim() ?? null;
+    // Se comparan TODOS los snapshots, no solo incluido y motivo: este paso los
+    // refresca desde el catálogo, así que un admin que edite la descripción o
+    // la tolerancia cambia lo que imprime un certificado ya firmado sin que el
+    // ingeniero toque nada.
+    const changed =
+      !previous ||
+      previous.included !== selection.included ||
+      previous.exclusionReason !== reason ||
+      previous.tagNumberSnapshot !== device.tagNumber ||
+      previous.descriptionSnapshot !== device.description ||
+      previous.deviceTypeSnapshot !== device.deviceType ||
+      !previous.toleranceValueSnapshot.equals(device.toleranceValue) ||
+      previous.toleranceUnitSnapshot !== device.toleranceUnit ||
+      previous.toleranceIsPercentSnapshot !== device.toleranceIsPercent ||
+      previous.displayOrderSnapshot !== device.displayOrder ||
+      previous.certificateTypesSnapshot.join(",") !== device.certificateTypes.join(",");
+
+    if (changed) {
+      scopeChanged = true;
+      // Un dispositivo puede pertenecer a más de un certificado.
+      for (const type of device.certificateTypes) changedTypes.add(type);
+      for (const type of previous?.certificateTypesSnapshot ?? []) changedTypes.add(type);
+    }
+  }
+
   await prisma.$transaction(
     devices.map((device) => {
       const selection = inputsByDeviceId.get(device.id);
@@ -386,6 +512,7 @@ export async function syncReportDeviceSelections(
           exclusionReason: selection.included ? null : selection.exclusionReason?.trim() ?? null,
           tagNumberSnapshot: device.tagNumber,
           descriptionSnapshot: device.description,
+          deviceTypeSnapshot: device.deviceType,
           toleranceValueSnapshot: device.toleranceValue,
           toleranceUnitSnapshot: device.toleranceUnit,
           toleranceIsPercentSnapshot: device.toleranceIsPercent,
@@ -399,6 +526,7 @@ export async function syncReportDeviceSelections(
           exclusionReason: selection.included ? null : selection.exclusionReason?.trim() ?? null,
           tagNumberSnapshot: device.tagNumber,
           descriptionSnapshot: device.description,
+          deviceTypeSnapshot: device.deviceType,
           toleranceValueSnapshot: device.toleranceValue,
           toleranceUnitSnapshot: device.toleranceUnit,
           toleranceIsPercentSnapshot: device.toleranceIsPercent,
@@ -409,6 +537,21 @@ export async function syncReportDeviceSelections(
     })
   );
 
+  if (scopeChanged) {
+    await prisma.$transaction(async (tx) => {
+      const affected = await tx.certificate.findMany({
+        where: { reportId: report.id, certificateType: { in: [...changedTypes] } },
+        select: { id: true },
+      });
+      for (const certificate of affected) {
+        await revokeCertificateSignatures(tx, certificate.id);
+      }
+      // La página de alcance es contenido del reporte, no de una sección: la
+      // firma general cae aunque el dispositivo tocado no tenga certificado.
+      await revokeReportSignatures(tx, report.id);
+    });
+  }
+
   await logAudit({
     entityType: "Report",
     entityId: report.id,
@@ -417,6 +560,7 @@ export async function syncReportDeviceSelections(
     changes: {
       included: input.selections.filter((selection) => selection.included).length,
       excluded: input.selections.filter((selection) => !selection.included).length,
+      revokedSignaturesFor: [...changedTypes],
     },
   });
 }
@@ -436,7 +580,13 @@ export async function getStandardsWizardData(reportId: string, actor: Actor) {
     }),
     prisma.certificate.findMany({
       where: { reportId: report.id },
-      include: { primaryStandard: true },
+      include: {
+        primaryStandard: true,
+        additionalStandards: {
+          include: { reportStandard: true },
+          orderBy: { displayOrder: "asc" },
+        },
+      },
     }),
   ]);
 
@@ -454,6 +604,7 @@ export async function syncReportStandards(
     standards: Array<{
       certificateType: CertificateType;
       standardInstrumentId: string;
+      additionalStandardInstrumentIds?: string[];
     }>;
   }
 ) {
@@ -471,6 +622,22 @@ export async function syncReportStandards(
       .filter((standard) => isImplementedType(standard.certificateType))
       .map((standard) => [standard.certificateType, standard.standardInstrumentId])
   );
+  // Los complementarios se validan igual que el principal: si respaldan el
+  // certificado, tienen que estar vigentes en la fecha de servicio.
+  const additionalByType = new Map(
+    input.standards
+      .filter((standard) => isImplementedType(standard.certificateType))
+      .map((standard) => [
+        standard.certificateType,
+        Array.from(
+          new Set(
+            (standard.additionalStandardInstrumentIds ?? []).filter(
+              (id) => id && id !== standard.standardInstrumentId
+            )
+          )
+        ),
+      ])
+  );
 
   for (const certificateType of requiredTypes) {
     if (!selectedByType.get(certificateType)) {
@@ -478,70 +645,135 @@ export async function syncReportStandards(
     }
   }
 
-  const selectedInstrumentIds = Array.from(new Set(selectedByType.values()));
+  const selectedInstrumentIds = Array.from(
+    new Set([
+      ...selectedByType.values(),
+      ...requiredTypes.flatMap(
+        (certificateType) => additionalByType.get(certificateType) ?? []
+      ),
+    ])
+  );
   const instruments = await prisma.standardInstrument.findMany({
     where: { id: { in: selectedInstrumentIds }, active: true },
   });
   const instrumentsById = new Map(instruments.map((instrument) => [instrument.id, instrument]));
 
   for (const certificateType of requiredTypes) {
-    const instrumentId = selectedByType.get(certificateType);
-    const instrument = instrumentId ? instrumentsById.get(instrumentId) : null;
-    if (!instrument) {
-      throw new Error(`El instrumento patrón seleccionado para ${certificateType} no existe.`);
-    }
-    if (instrument.calibrationExpiresAt <= report.serviceDate) {
-      throw new Error(
-        `El instrumento ${instrument.description} ${instrument.serialNumber} está vencido para la fecha de servicio.`
-      );
+    const usedIds = [
+      selectedByType.get(certificateType),
+      ...(additionalByType.get(certificateType) ?? []),
+    ];
+
+    for (const instrumentId of usedIds) {
+      const instrument = instrumentId ? instrumentsById.get(instrumentId) : null;
+      if (!instrument) {
+        throw new Error(`El instrumento patrón seleccionado para ${certificateType} no existe.`);
+      }
+      if (instrument.certificationStatus === "PENDING") {
+        throw new Error(
+          `El instrumento ${instrument.description} ${instrument.serialNumber} está pendiente de certificación.`
+        );
+      }
+      if (
+        instrument.certificationStatus === "CERTIFIED" &&
+        (!instrument.calibrationCertNumber ||
+          !instrument.calibrationDate ||
+          !instrument.calibrationExpiresAt)
+      ) {
+        throw new Error(
+          `El instrumento ${instrument.description} ${instrument.serialNumber} tiene datos de certificación incompletos.`
+        );
+      }
+      if (
+        instrument.certificationStatus === "CERTIFIED" &&
+        instrument.calibrationExpiresAt &&
+        instrument.calibrationExpiresAt <= report.serviceDate
+      ) {
+        throw new Error(
+          `El instrumento ${instrument.description} ${instrument.serialNumber} está vencido para la fecha de servicio.`
+        );
+      }
     }
   }
 
+  // Estado firmado de los patrones antes de tocar nada, para saber a qué
+  // certificados hay que revocarles la firma.
+  const before = await prisma.certificate.findMany({
+    where: { reportId: report.id },
+    include: {
+      primaryStandard: true,
+      additionalStandards: {
+        include: { reportStandard: true },
+        orderBy: { displayOrder: "asc" },
+      },
+    },
+  });
+  const fingerprintBefore = new Map(
+    before.map((certificate) => [
+      certificate.certificateType,
+      standardsFingerprint([
+        certificate.primaryStandard,
+        ...certificate.additionalStandards.map((link) => link.reportStandard),
+      ]),
+    ])
+  );
+
+  const revokedTypes: CertificateType[] = [];
+
   await prisma.$transaction(async (tx) => {
-    await tx.certificate.deleteMany({
+    const removed = await tx.certificate.deleteMany({
       where: {
         reportId: report.id,
         certificateType: { notIn: requiredTypes },
       },
     });
 
-    for (const certificateType of requiredTypes) {
-      const instrumentId = selectedByType.get(certificateType);
-      if (!instrumentId) continue;
+    // Borrar el certificado se lleva su firma en cascada, pero la general
+    // quedaría acreditando un conjunto de secciones que ya no existe.
+    if (removed.count > 0) {
+      await revokeReportSignatures(tx, report.id);
+    }
 
+    /** Registra el instrumento en el reporte, refrescando su snapshot. */
+    const upsertReportStandard = async (instrumentId: string) => {
       const instrument = instrumentsById.get(instrumentId);
-      if (!instrument) continue;
+      if (!instrument) return null;
 
-      const reportStandard = await tx.reportStandard.upsert({
+      const snapshot = {
+        descriptionSnapshot: instrument.description,
+        manufacturerSnapshot: instrument.manufacturer,
+        modelSnapshot: instrument.model,
+        serialSnapshot: instrument.serialNumber,
+        certificationStatusSnapshot: instrument.certificationStatus,
+        certNumberSnapshot: instrument.calibrationCertNumber,
+        calDateSnapshot: instrument.calibrationDate,
+        calExpiresAtSnapshot: instrument.calibrationExpiresAt,
+      };
+
+      return tx.reportStandard.upsert({
         where: {
           reportId_standardInstrumentId: {
             reportId: report.id,
             standardInstrumentId: instrument.id,
           },
         },
-        update: {
-          descriptionSnapshot: instrument.description,
-          manufacturerSnapshot: instrument.manufacturer,
-          modelSnapshot: instrument.model,
-          serialSnapshot: instrument.serialNumber,
-          certNumberSnapshot: instrument.calibrationCertNumber,
-          calDateSnapshot: instrument.calibrationDate,
-          calExpiresAtSnapshot: instrument.calibrationExpiresAt,
-        },
+        update: snapshot,
         create: {
           reportId: report.id,
           standardInstrumentId: instrument.id,
-          descriptionSnapshot: instrument.description,
-          manufacturerSnapshot: instrument.manufacturer,
-          modelSnapshot: instrument.model,
-          serialSnapshot: instrument.serialNumber,
-          certNumberSnapshot: instrument.calibrationCertNumber,
-          calDateSnapshot: instrument.calibrationDate,
-          calExpiresAtSnapshot: instrument.calibrationExpiresAt,
+          ...snapshot,
         },
       });
+    };
 
-      await tx.certificate.upsert({
+    for (const certificateType of requiredTypes) {
+      const instrumentId = selectedByType.get(certificateType);
+      if (!instrumentId) continue;
+
+      const reportStandard = await upsertReportStandard(instrumentId);
+      if (!reportStandard) continue;
+
+      const certificate = await tx.certificate.upsert({
         where: {
           reportId_certificateType: {
             reportId: report.id,
@@ -559,6 +791,55 @@ export async function syncReportStandards(
           primaryStandardId: reportStandard.id,
         },
       });
+
+      const additionalIds = additionalByType.get(certificateType) ?? [];
+      const linkedStandardIds: string[] = [];
+      for (const [index, additionalId] of additionalIds.entries()) {
+        const additional = await upsertReportStandard(additionalId);
+        if (!additional) continue;
+
+        linkedStandardIds.push(additional.id);
+        await tx.certificateStandard.upsert({
+          where: {
+            certificateId_reportStandardId: {
+              certificateId: certificate.id,
+              reportStandardId: additional.id,
+            },
+          },
+          update: { displayOrder: (index + 1) * 10 },
+          create: {
+            certificateId: certificate.id,
+            reportStandardId: additional.id,
+            displayOrder: (index + 1) * 10,
+          },
+        });
+      }
+
+      // Quitar un complementario de la selección debe quitarlo del certificado.
+      await tx.certificateStandard.deleteMany({
+        where: {
+          certificateId: certificate.id,
+          reportStandardId: { notIn: linkedStandardIds },
+        },
+      });
+
+      // La firma acredita los patrones impresos en la página. Si cambia el
+      // instrumento, se le suma o quita un complementario, o se refresca su
+      // certificación, deja de valer. Un guardado que no mueve nada no revoca:
+      // volver al paso y presionar guardar no puede costar las firmas.
+      const previous = fingerprintBefore.get(certificateType);
+      const current = standardsFingerprint([
+        instrumentSnapshot(instrumentsById.get(instrumentId)!),
+        ...additionalIds.flatMap((id) => {
+          const instrument = instrumentsById.get(id);
+          return instrument ? [instrumentSnapshot(instrument)] : [];
+        }),
+      ]);
+
+      if (previous !== undefined && previous !== current) {
+        await revokeCertificateSignatures(tx, certificate.id);
+        revokedTypes.push(certificateType);
+      }
     }
   });
 
@@ -569,6 +850,8 @@ export async function syncReportStandards(
     userId: actor.id,
     changes: {
       requiredTypes,
+      // Queda asentado qué secciones perdieron su firma por el cambio.
+      revokedSignaturesFor: revokedTypes,
     } satisfies Prisma.InputJsonObject,
   });
 }
