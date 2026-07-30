@@ -6,6 +6,8 @@ import { requireAuth } from "@/server/auth";
 import {
   createChecklistDevice,
   createDraftReport,
+  deleteDraftReport,
+  duplicateReportAsDraft,
   syncReportDeviceSelections,
   syncReportStandards,
   updateReportBasicInfo,
@@ -34,6 +36,50 @@ export async function createReport() {
   const report = await createDraftReport(session.user.id);
   revalidatePath("/reports");
   redirect(`/reports/${report.id}/wizard/info`);
+}
+
+export async function duplicateReport(input: unknown) {
+  const locale = await getLocale();
+  if (typeof input !== "string" || input.length === 0) {
+    return { ok: false as const, message: translate(locale, "common.invalidData") };
+  }
+
+  let reportId: string;
+  try {
+    const session = await requireAuth();
+    const report = await duplicateReportAsDraft(input, {
+      id: session.user.id,
+      role: session.user.role,
+    });
+    reportId = report.id;
+  } catch (error) {
+    unstable_rethrow(error);
+    return { ok: false as const, message: getErrorMessage(error, locale) };
+  }
+
+  revalidatePath("/reports");
+  redirect(`/reports/${reportId}/wizard/info`);
+}
+
+export async function deleteReport(input: unknown) {
+  const locale = await getLocale();
+  if (typeof input !== "string" || input.length === 0) {
+    return { ok: false as const, message: translate(locale, "common.invalidData") };
+  }
+
+  try {
+    const session = await requireAuth();
+    await deleteDraftReport(input, {
+      id: session.user.id,
+      role: session.user.role,
+    });
+  } catch (error) {
+    unstable_rethrow(error);
+    return { ok: false as const, message: getErrorMessage(error, locale) };
+  }
+
+  revalidatePath("/reports");
+  return { ok: true as const };
 }
 
 export async function updateReportInfo(input: unknown) {

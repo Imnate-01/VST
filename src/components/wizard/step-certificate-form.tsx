@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/card";
 import { MeasurementStatusBadge } from "@/components/report/measurement-status-badge";
 import { cn } from "@/lib/utils";
+import { localizeMeasurementStatusReason } from "@/lib/i18n";
 import { useLanguage } from "@/components/language-provider";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
 import { useUnsavedChanges } from "@/components/navigation-protection-provider";
@@ -167,13 +168,18 @@ function InputCell({
     <input
       inputMode="decimal"
       placeholder={disabled ? "N/A" : placeholder}
-      disabled={disabled}
+      // `readOnly` y no `disabled`: react-hook-form lee un campo deshabilitado
+      // como `undefined`, así que marcar N/A dejaba el formulario sucio para
+      // siempre y el certificado no se podía firmar sin recargar. Lo capturado
+      // se conserva por si se desmarca; el servidor igual lo descarta.
+      readOnly={disabled}
       className={cn(
         "tabular h-8 w-full px-3 text-right font-medium text-foreground outline-none ring-inset transition-colors focus:bg-white focus:ring-2 focus:ring-primary",
         tone === "capture" &&
           "bg-muted/70 placeholder:font-normal placeholder:text-muted-foreground hover:bg-muted",
         tone === "nominal" && "bg-white placeholder:font-normal placeholder:text-muted-foreground",
-        disabled && "cursor-not-allowed bg-muted/40 text-muted-foreground hover:bg-muted/40"
+        disabled &&
+          "cursor-not-allowed bg-muted/40 text-muted-foreground hover:bg-muted/40 focus:ring-0"
       )}
       {...registration}
     />
@@ -571,7 +577,9 @@ export function StepCertificateForm({
                   </div>
 
                   {row.statusReason && (
-                    <p className="mb-3 text-xs text-muted-foreground">{row.statusReason}</p>
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      {localizeMeasurementStatusReason(row.statusReason, locale)}
+                    </p>
                   )}
 
                   <div className={gridClass}>

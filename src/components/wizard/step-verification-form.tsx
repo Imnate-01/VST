@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/card";
 import { WizardFormFooter } from "@/components/wizard/wizard-form-footer";
 import { useUnsavedChanges } from "@/components/navigation-protection-provider";
+import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 
 type Props = {
@@ -194,8 +195,17 @@ export function StepVerificationForm({
                               </span>
                               <input
                                 inputMode="decimal"
-                                disabled={notApplicable}
-                                className="h-10 w-full rounded-lg border border-input bg-muted/70 px-3 text-right disabled:bg-muted disabled:text-muted-foreground"
+                                // `readOnly` y no `disabled`: react-hook-form
+                                // lee un campo deshabilitado como `undefined`,
+                                // y eso dejaba el formulario sucio para
+                                // siempre, sin poder firmar la sección.
+                                readOnly={notApplicable}
+                                placeholder={notApplicable ? "N/A" : undefined}
+                                className={cn(
+                                  "h-10 w-full rounded-lg border border-input bg-muted/70 px-3 text-right",
+                                  notApplicable &&
+                                    "cursor-not-allowed bg-muted text-muted-foreground"
+                                )}
                                 {...form.register(
                                   `rows.${rowIndex}.driveFrequencyHz`
                                 )}

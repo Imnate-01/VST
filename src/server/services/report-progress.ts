@@ -59,6 +59,9 @@ export async function getReportProgress(
               points: {
                 select: {
                   kind: true,
+                  // Sin esto, un punto N/A se lee como punto vacío y la sección
+                  // queda "incompleta" para siempre en la revisión.
+                  notApplicable: true,
                   conditionValue: true,
                   targetNominal: true,
                   asFoundReference: true,

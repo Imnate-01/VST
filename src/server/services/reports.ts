@@ -200,6 +200,173 @@ export async function createDraftReport(userId: string) {
   return report;
 }
 
+/**
+ * Crea un borrador a partir de la configuración de otro reporte.
+ *
+ * Se copian el alcance, los instrumentos y las secciones base, pero nunca las
+ * mediciones, firmas, snapshots finales ni el PDF. Así el duplicado sirve como
+ * punto de partida sin presentar resultados históricos como una captura nueva.
+ */
+export async function duplicateReportAsDraft(reportId: string, actor: Actor) {
+  const source = await prisma.report.findUnique({
+    where: { id: reportId },
+    include: {
+      deviceSelections: true,
+      standards: true,
+      certificates: {
+        include: {
+          additionalStandards: true,
+        },
+      },
+    },
+  });
+
+  if (!source || (actor.role !== "ADMIN" && source.preparedById !== actor.id)) {
+    throw new Error("Reporte no encontrado.");
+  }
+
+  const reportNumber = await getAvailableReportNumber(source.reportNumber);
+  const duplicated = await prisma.$transaction(async (tx) => {
+    const report = await tx.report.create({
+      data: {
+        reportNumber,
+        revisionNumber: source.revisionNumber,
+        fillerId: source.fillerId,
+        serviceDate: source.serviceDate,
+        preparedById: actor.id,
+        status: ReportStatus.DRAFT,
+        observations: source.observations,
+      },
+    });
+
+    for (const selection of source.deviceSelections) {
+      await tx.reportDeviceSelection.create({
+        data: {
+          reportId: report.id,
+          deviceCatalogId: selection.deviceCatalogId,
+          included: selection.included,
+          exclusionReason: selection.exclusionReason,
+          tagNumberSnapshot: selection.tagNumberSnapshot,
+          descriptionSnapshot: selection.descriptionSnapshot,
+          deviceTypeSnapshot: selection.deviceTypeSnapshot,
+          toleranceValueSnapshot: selection.toleranceValueSnapshot,
+          toleranceUnitSnapshot: selection.toleranceUnitSnapshot,
+          toleranceIsPercentSnapshot: selection.toleranceIsPercentSnapshot,
+          certificateTypesSnapshot: selection.certificateTypesSnapshot,
+          displayOrderSnapshot: selection.displayOrderSnapshot,
+        },
+      });
+    }
+
+    const standardIdMap = new Map<string, string>();
+    for (const standard of source.standards) {
+      const copied = await tx.reportStandard.create({
+        data: {
+          reportId: report.id,
+          standardInstrumentId: standard.standardInstrumentId,
+          descriptionSnapshot: standard.descriptionSnapshot,
+          manufacturerSnapshot: standard.manufacturerSnapshot,
+          modelSnapshot: standard.modelSnapshot,
+          serialSnapshot: standard.serialSnapshot,
+          certificationStatusSnapshot: standard.certificationStatusSnapshot,
+          certNumberSnapshot: standard.certNumberSnapshot,
+          calDateSnapshot: standard.calDateSnapshot,
+          calExpiresAtSnapshot: standard.calExpiresAtSnapshot,
+        },
+      });
+      standardIdMap.set(standard.id, copied.id);
+    }
+
+    for (const certificate of source.certificates) {
+      const primaryStandardId = standardIdMap.get(certificate.primaryStandardId);
+      if (!primaryStandardId) {
+        throw new Error("El reporte de origen tiene instrumentos incompletos.");
+      }
+
+      const copied = await tx.certificate.create({
+        data: {
+          reportId: report.id,
+          certificateType: certificate.certificateType,
+          layout: certificate.layout,
+          primaryStandardId,
+          ...(certificate.params === null
+            ? {}
+            : { params: certificate.params as Prisma.InputJsonValue }),
+          overallStatus: "PENDING",
+        },
+      });
+
+      for (const link of certificate.additionalStandards) {
+        const reportStandardId = standardIdMap.get(link.reportStandardId);
+        if (!reportStandardId) {
+          throw new Error("El reporte de origen tiene instrumentos incompletos.");
+        }
+        await tx.certificateStandard.create({
+          data: {
+            certificateId: copied.id,
+            reportStandardId,
+            displayOrder: link.displayOrder,
+          },
+        });
+      }
+    }
+
+    return report;
+  });
+
+  await logAudit({
+    entityType: "Report",
+    entityId: duplicated.id,
+    action: "duplicate",
+    userId: actor.id,
+    changes: {
+      sourceReportId: source.id,
+      sourceReportNumber: source.reportNumber,
+      reportNumber: duplicated.reportNumber,
+    },
+  });
+
+  return duplicated;
+}
+
+/** El registro oficial enviado no se elimina; solo se pueden descartar borradores. */
+export async function deleteDraftReport(reportId: string, actor: Actor) {
+  const report = await prisma.report.findUnique({
+    where: { id: reportId },
+    select: {
+      id: true,
+      reportNumber: true,
+      status: true,
+      preparedById: true,
+    },
+  });
+
+  if (!report || (actor.role !== "ADMIN" && report.preparedById !== actor.id)) {
+    throw new Error("Reporte no encontrado.");
+  }
+  if (report.status !== ReportStatus.DRAFT) {
+    throw new Error("Solo se pueden eliminar reportes en borrador.");
+  }
+
+  const removed = await prisma.report.deleteMany({
+    where: { id: report.id, status: ReportStatus.DRAFT },
+  });
+  if (removed.count !== 1) {
+    throw new Error("El reporte ya no está disponible para eliminarse.");
+  }
+
+  await logAudit({
+    entityType: "Report",
+    entityId: report.id,
+    action: "delete",
+    userId: actor.id,
+    changes: {
+      reportNumber: report.reportNumber,
+      status: report.status,
+    },
+  });
+}
+
 export async function getReportForWizard(reportId: string, actor: Actor) {
   const report = await getEditableReport(reportId, actor);
   if (!report) return null;
