@@ -266,7 +266,7 @@ const es = {
   "reports.countOne": "{count} reporte",
   "reports.countMany": "{count} reportes",
   "reports.summary": "{count} reportes · {drafts} borradores",
-  "reports.searchPlaceholder": "Buscar por número de reporte",
+  "reports.searchPlaceholder": "Buscar por reporte, cliente o número de serie",
   "reports.filterStatus": "Estado",
   "reports.filterClient": "Cliente",
   "reports.filterDate": "Rango de fechas",
@@ -277,7 +277,7 @@ const es = {
   "reports.noMatches": "Ningún reporte coincide con estos filtros",
   "reports.noMatchesHelp": "Limpia los filtros o inicia un nuevo reporte de calibración.",
   "reports.clearFilters": "Limpiar filtros",
-  "reports.step": "Paso {step} de 7",
+  "reports.step": "Paso {step} de {total}",
   "reports.progressInfo": "Información del reporte",
   "reports.progressDevices": "Checklist",
   "reports.progressStandards": "Instrumentos",
@@ -298,8 +298,15 @@ const es = {
   "reports.status.submitted": "Enviado",
   "reports.viewPdf": "Ver PDF",
   "reports.continueWizard": "Continuar asistente",
+  "reports.duplicate": "Duplicar",
+  "reports.duplicating": "Duplicando...",
+  "reports.delete": "Eliminar",
+  "reports.deleting": "Eliminando...",
+  "reports.deleteConfirm":
+    "¿Eliminar permanentemente este borrador? También se descartarán sus datos descargados para uso sin conexión. Esta acción no se puede deshacer.",
   "report.statusTitle": "Estado del reporte",
-  "report.statusDescription": "Sprint 3 completado: listo para revisión y firma en el siguiente sprint.",
+  "report.statusDescription":
+    "Los borradores se pueden editar; los reportes enviados son de solo lectura y su PDF archivado es el registro oficial.",
   "report.serviceDate": "Fecha de servicio",
   "report.baseCertificates": "Certificados base",
   "report.preparedTypes": "Tipos preparados",
@@ -361,7 +368,7 @@ const es = {
   "deviceType.MOT": "MOT · Bomba dosificadora",
   "standards.title": "Instrumentos",
   "standards.description": "Selecciona un instrumento activo con calibración vigente en la fecha de servicio {date}.",
-  "standards.empty": "No se requieren tipos de certificado porque no hay dispositivos incluidos. Puedes finalizar el Sprint 2 sin crear certificados base.",
+  "standards.empty": "No se requieren tipos de certificado porque no hay dispositivos incluidos. Puedes guardar y continuar sin crear certificados base.",
   "standards.select": "Selecciona un instrumento",
   "standards.primary": "Patrón principal",
   "standards.additional": "Patrones complementarios",
@@ -370,7 +377,7 @@ const es = {
   "standards.addAdditional": "Agregar patrón",
   "standards.removeAdditional": "Quitar {name}",
   "standards.noAdditional": "Sin patrones complementarios.",
-  "standards.finish": "Finalizar Sprint 2",
+  "standards.finish": "Guardar y continuar",
   "certificate.suffix": "{name}",
   "certificate.missing": "No existe una sección base de este tipo en el reporte.",
   "certificate.missingHelp": "Vuelve al paso Instrumentos y guarda los instrumentos patrón para crear las secciones requeridas.",
@@ -865,7 +872,7 @@ const en: Record<MessageKey, string> = {
   "reports.countOne": "{count} report",
   "reports.countMany": "{count} reports",
   "reports.summary": "{count} reports · {drafts} drafts",
-  "reports.searchPlaceholder": "Search by report number",
+  "reports.searchPlaceholder": "Search by report number, client, or serial number",
   "reports.filterStatus": "Status",
   "reports.filterClient": "Client",
   "reports.filterDate": "Date range",
@@ -876,7 +883,7 @@ const en: Record<MessageKey, string> = {
   "reports.noMatches": "No reports match these filters",
   "reports.noMatchesHelp": "Clear the filters or start a new calibration report.",
   "reports.clearFilters": "Clear filters",
-  "reports.step": "Step {step} of 7",
+  "reports.step": "Step {step} of {total}",
   "reports.progressInfo": "Report information",
   "reports.progressDevices": "Checklist",
   "reports.progressStandards": "Instruments",
@@ -897,8 +904,15 @@ const en: Record<MessageKey, string> = {
   "reports.status.submitted": "Submitted",
   "reports.viewPdf": "View PDF",
   "reports.continueWizard": "Continue wizard",
+  "reports.duplicate": "Duplicate",
+  "reports.duplicating": "Duplicating...",
+  "reports.delete": "Delete",
+  "reports.deleting": "Deleting...",
+  "reports.deleteConfirm":
+    "Permanently delete this draft? Its downloaded offline data will also be discarded. This action cannot be undone.",
   "report.statusTitle": "Report status",
-  "report.statusDescription": "Sprint 3 complete: ready for review and signature in the next sprint.",
+  "report.statusDescription":
+    "Drafts remain editable; submitted reports are read-only and their archived PDF is the official record.",
   "report.serviceDate": "Service date",
   "report.baseCertificates": "Base certificates",
   "report.preparedTypes": "Prepared types",
@@ -960,7 +974,7 @@ const en: Record<MessageKey, string> = {
   "deviceType.MOT": "MOT · Metering pump",
   "standards.title": "Instruments",
   "standards.description": "Select an active instrument with a valid calibration on the service date, {date}.",
-  "standards.empty": "No certificate types are required because there are no included devices. You can complete Sprint 2 without creating base certificates.",
+  "standards.empty": "No certificate types are required because there are no included devices. You can save and continue without creating base certificates.",
   "standards.select": "Select an instrument",
   "standards.primary": "Primary standard",
   "standards.additional": "Additional standards",
@@ -969,7 +983,7 @@ const en: Record<MessageKey, string> = {
   "standards.addAdditional": "Add standard",
   "standards.removeAdditional": "Remove {name}",
   "standards.noAdditional": "No additional standards.",
-  "standards.finish": "Complete Sprint 2",
+  "standards.finish": "Save and continue",
   "certificate.suffix": "{name}",
   "certificate.missing": "This report does not have a base section of this type.",
   "certificate.missingHelp": "Return to the Instruments step and save the reference instruments to create the required sections.",
@@ -1226,6 +1240,33 @@ export function createTranslator(locale: Locale) {
   return (key: MessageKey, values?: TranslationValues) => translate(locale, key, values);
 }
 
+/** Localizes measurement explanations that are stored with stable Spanish wording. */
+export function localizeMeasurementStatusReason(
+  message: string,
+  locale: Locale
+): string {
+  if (locale === "es") return message;
+
+  const exact: Record<string, string> = {
+    "Todos los puntos del dispositivo están marcados como N/A":
+      "All points for this device are marked N/A.",
+    "Completa todos los puntos y campos de medición antes de firmar":
+      "Complete every measurement point and field before signing.",
+    "As found fuera de tolerancia y el As Left sigue fuera de tolerancia":
+      "As Found was out of tolerance and As Left remains out of tolerance.",
+    "As Left fuera de tolerancia": "As Left is out of tolerance.",
+    "As Found fuera de tolerancia; ajustado y verificado dentro de tolerancia":
+      "As Found was out of tolerance; adjusted and verified within tolerance.",
+    "Falta el objetivo de la prueba": "The test target is missing.",
+    "Completa todas las corridas antes de firmar":
+      "Complete every test run before signing.",
+    "Una o más corridas están fuera de tolerancia":
+      "One or more test runs are out of tolerance.",
+  };
+
+  return exact[message] ?? message;
+}
+
 /** Localizes service-layer errors without changing their stable internal wording. */
 export function localizeServerError(message: string, locale: Locale): string {
   if (locale === "es") return message;
@@ -1255,6 +1296,11 @@ export function localizeServerError(message: string, locale: Locale): string {
     "El contenido cambió después de firmar: vuelve a firmar el reporte.":
       "The content changed after signing: sign the report again.",
     "Reporte no encontrado.": "Report not found.",
+    "Solo se pueden eliminar reportes en borrador.": "Only draft reports can be deleted.",
+    "El reporte ya no está disponible para eliminarse.":
+      "The report is no longer available for deletion.",
+    "El reporte de origen tiene instrumentos incompletos.":
+      "The source report has incomplete instrument data.",
     "Tolerancia porcentual sobre una referencia de 0: la tolerancia absoluta sería 0 y ninguna lectura podría pasar.": "A percentage tolerance cannot be evaluated against a zero reference: the absolute tolerance would be zero and no reading could pass.",
     "Falta BLOB_READ_WRITE_TOKEN: no se puede almacenar el PDF final. Configúralo en el entorno.": "BLOB_READ_WRITE_TOKEN is missing, so the final PDF cannot be stored. Configure it in the environment.",
   };

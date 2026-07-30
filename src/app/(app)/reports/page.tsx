@@ -4,6 +4,7 @@ import { requireAuth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { Button } from "@/components/ui/button";
 import { ReportHistory, type ReportHistoryItem } from "@/components/report/report-history";
+import { implementedCertificateTypes } from "@/lib/certificates";
 import { getTranslations } from "@/lib/i18n-server";
 
 export default async function ReportsPage() {
@@ -29,6 +30,7 @@ export default async function ReportsPage() {
   });
 
   const items: ReportHistoryItem[] = reports.map((report) => {
+    const progressTotal = implementedCertificateTypes.length + 4;
     const passedCertificates = report.certificates.filter(
       (certificate) => certificate.overallStatus === "PASS"
     ).length;
@@ -49,7 +51,7 @@ export default async function ReportsPage() {
       progressKey = "standards";
     }
     if (report.certificates.length > 0) {
-      progressStep = Math.min(7, 4 + passedCertificates);
+      progressStep = Math.min(progressTotal, 4 + passedCertificates);
       progressKey = "calibration";
     }
 
@@ -63,6 +65,7 @@ export default async function ReportsPage() {
       serviceDate: report.serviceDate.toISOString(),
       preparedBy: report.preparedBy.name,
       progressStep,
+      progressTotal,
       progressKey,
       passedCertificates,
       totalCertificates: report.certificates.length,

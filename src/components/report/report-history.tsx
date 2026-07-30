@@ -1,11 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, FileText, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  AlertCircle,
+  ArrowRight,
+  Copy,
+  FileText,
+  Loader2,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReportStatusBadge } from "@/components/report/report-status-badge";
 import { useLanguage } from "@/components/language-provider";
+import { deleteReport, duplicateReport } from "@/server/actions/reports";
+import { removeOfflineReport } from "@/lib/offline/repository";
 
 export type ReportHistoryItem = {
   id: string;
@@ -17,6 +29,7 @@ export type ReportHistoryItem = {
   serviceDate: string;
   preparedBy: string;
   progressStep: number;
+  progressTotal: number;
   progressKey: "info" | "devices" | "standards" | "calibration";
   passedCertificates: number;
   totalCertificates: number;
@@ -169,12 +182,21 @@ function FilterSelect({
 
 function ReportCard({ report, showEngineer }: { report: ReportHistoryItem; showEngineer: boolean }) {
   const { t } = useLanguage();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [pendingAction, setPendingAction] = useState<"duplicate" | "delete" | null>(
+    null
+  );
+  const [actionError, setActionError] = useState("");
   const draft = report.status === "DRAFT";
   const reportHref = draft
     ? `/reports/${report.id}/wizard/info`
     : `/reports/${report.id}`;
   const progressLabel = draft
-    ? `${t("reports.step", { step: report.progressStep })} · ${
+    ? `${t("reports.step", {
+        step: report.progressStep,
+        total: report.progressTotal,
+      })} · ${
         report.progressKey === "info"
           ? t("reports.progressInfo")
           : report.progressKey === "devices"
@@ -187,6 +209,42 @@ function ReportCard({ report, showEngineer }: { report: ReportHistoryItem; showE
         passed: report.passedCertificates,
         total: report.totalCertificates,
       });
+
+  function handleDuplicate() {
+    setActionError("");
+    setPendingAction("duplicate");
+    startTransition(async () => {
+      const result = await duplicateReport(report.id);
+      if (result?.ok === false) {
+        setActionError(result.message);
+        setPendingAction(null);
+      }
+    });
+  }
+
+  function handleDelete() {
+    if (!window.confirm(t("reports.deleteConfirm"))) return;
+
+    setActionError("");
+    setPendingAction("delete");
+    startTransition(async () => {
+      const result = await deleteReport(report.id);
+      if (!result.ok) {
+        setActionError(result.message);
+        setPendingAction(null);
+        return;
+      }
+
+      try {
+        await removeOfflineReport(report.id);
+      } catch {
+        // El borrado del servidor ya se confirmó. Una copia local ausente o un
+        // IndexedDB no disponible no debe hacer parecer que el reporte sobrevivió.
+      }
+      setPendingAction(null);
+      router.refresh();
+    });
+  }
 
   return (
     <article className="flex flex-col gap-5 rounded-xl border bg-white p-5 transition-colors hover:border-input sm:p-6 lg:flex-row lg:items-center lg:justify-between">
@@ -225,7 +283,7 @@ function ReportCard({ report, showEngineer }: { report: ReportHistoryItem; showE
         </p>
       </div>
 
-      <div className="grid shrink-0 grid-cols-2 gap-2 lg:w-40 lg:grid-cols-1">
+      <div className="grid shrink-0 grid-cols-2 gap-2 lg:w-44 lg:grid-cols-1">
         <Button asChild variant={draft ? "default" : "outline"}>
           <Link href={reportHref}>
             {draft ? t("common.continue") : t("reports.openReport")}
@@ -238,6 +296,46 @@ function ReportCard({ report, showEngineer }: { report: ReportHistoryItem; showE
             {t("reports.viewPdf")}
           </Link>
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending}
+          onClick={handleDuplicate}
+        >
+          {pendingAction === "duplicate" ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Copy className="h-4 w-4" aria-hidden="true" />
+          )}
+          {pendingAction === "duplicate"
+            ? t("reports.duplicating")
+            : t("reports.duplicate")}
+        </Button>
+        {draft && (
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={pending}
+            onClick={handleDelete}
+          >
+            {pendingAction === "delete" ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            )}
+            {pendingAction === "delete"
+              ? t("reports.deleting")
+              : t("reports.delete")}
+          </Button>
+        )}
+        {actionError && (
+          <p
+            className="col-span-2 text-xs text-destructive lg:col-span-1"
+            role="alert"
+          >
+            {actionError}
+          </p>
+        )}
       </div>
     </article>
   );

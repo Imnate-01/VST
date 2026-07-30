@@ -29,6 +29,7 @@ import {
 import {
   createTranslator,
   DEFAULT_LOCALE,
+  localizeMeasurementStatusReason,
   translate,
   type Locale,
   type MessageKey,
@@ -1343,7 +1344,9 @@ function CertificatePage({
     .filter((column) => column.status === "FAIL")
     .map(
       (column) =>
-        column.statusReason ||
+        (column.statusReason
+          ? localizeMeasurementStatusReason(column.statusReason, locale)
+          : null) ||
         `${column.tagNumber} ${column.description}: ${translate(locale, "pdf.deviationRecorded")}`
     );
   const pointOf = (column: PdfDeviceColumn, kind: PointKind) =>
